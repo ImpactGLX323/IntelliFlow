@@ -1,13 +1,19 @@
 'use client'
 
 import React, { createContext, useContext, useState, useEffect } from 'react'
-import { authAPI } from '@/lib/api'
+import {
+  createUserWithEmailAndPassword,
+  onAuthStateChanged,
+  signInWithEmailAndPassword,
+  signOut,
+  updateProfile,
+} from 'firebase/auth'
+import { auth } from '@/lib/firebase'
 
 interface User {
-  id: number
-  email: string
+  uid: string
+  email: string | null
   full_name: string | null
-  is_active: boolean
 }
 
 interface AuthContextType {
@@ -15,7 +21,7 @@ interface AuthContextType {
   loading: boolean
   login: (email: string, password: string) => Promise<void>
   register: (email: string, password: string, fullName?: string) => Promise<void>
-  logout: () => void
+  logout: () => Promise<void>
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
@@ -25,39 +31,45 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    const token = localStorage.getItem('token')
-    if (token) {
-      authAPI.getMe()
-        .then((response) => {
-          setUser(response.data)
+    const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
+      if (firebaseUser) {
+        setUser({
+          uid: firebaseUser.uid,
+          email: firebaseUser.email,
+          full_name: firebaseUser.displayName ?? null,
         })
-        .catch(() => {
-          localStorage.removeItem('token')
-        })
-        .finally(() => {
-          setLoading(false)
-        })
-    } else {
+      } else {
+        setUser(null)
+      }
       setLoading(false)
-    }
+    })
+
+    return () => unsubscribe()
   }, [])
 
   const login = async (email: string, password: string) => {
-    const response = await authAPI.login(email, password)
-    const { access_token } = response.data
-    localStorage.setItem('token', access_token)
-    
-    const userResponse = await authAPI.getMe()
-    setUser(userResponse.data)
+    const credential = await signInWithEmailAndPassword(auth, email, password)
+    setUser({
+      uid: credential.user.uid,
+      email: credential.user.email,
+      full_name: credential.user.displayName ?? null,
+    })
   }
 
   const register = async (email: string, password: string, fullName?: string) => {
-    await authAPI.register(email, password, fullName)
-    await login(email, password)
+    const credential = await createUserWithEmailAndPassword(auth, email, password)
+    if (fullName) {
+      await updateProfile(credential.user, { displayName: fullName })
+    }
+    setUser({
+      uid: credential.user.uid,
+      email: credential.user.email,
+      full_name: fullName ?? credential.user.displayName ?? null,
+    })
   }
 
-  const logout = () => {
-    localStorage.removeItem('token')
+  const logout = async () => {
+    await signOut(auth)
     setUser(null)
   }
 
@@ -75,4 +87,3 @@ export function useAuth() {
   }
   return context
 }
-

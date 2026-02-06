@@ -39,6 +39,9 @@ yarn-error.log*
 .env.local
 .env.*.local
 
+# Firebase Admin SDK
+backend/secrets/*.json
+
 # IDE
 .vscode/
 .idea/
@@ -57,4 +60,3 @@ Thumbs.db
 # FAISS
 *.index
 *.pkl
-

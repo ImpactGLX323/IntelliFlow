@@ -2,11 +2,16 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.routers import auth, products, sales, analytics, ai_copilot
 from app.database import engine, Base
+from app.firebase_admin import init_firebase_admin
 
 # Create database tables
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="IntelliFlow API", version="1.0.0")
+
+@app.on_event("startup")
+def startup_firebase():
+    init_firebase_admin()
 
 # CORS middleware
 app.add_middleware(
@@ -31,4 +36,3 @@ async def root():
 @app.get("/health")
 async def health():
     return {"status": "healthy"}
-
