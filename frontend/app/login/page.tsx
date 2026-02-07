@@ -5,11 +5,40 @@ import { useRouter } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
 import Link from 'next/link'
 import { Plus_Jakarta_Sans } from 'next/font/google'
+import { FirebaseError } from 'firebase/app'
+import logo from '../../docs/images/Intelliflow.png'
+
 
 const jakarta = Plus_Jakarta_Sans({
   subsets: ['latin'],
   weight: ['400', '500', '600', '700'],
 })
+
+const getAuthErrorMessage = (error: unknown) => {
+  if (error instanceof FirebaseError) {
+    switch (error.code) {
+      case 'auth/invalid-email':
+        return 'Enter a valid email address.'
+      case 'auth/user-disabled':
+        return 'This account has been disabled.'
+      case 'auth/user-not-found':
+      case 'auth/wrong-password':
+        return 'Email or password is incorrect.'
+      case 'auth/too-many-requests':
+        return 'Too many attempts. Try again in a few minutes.'
+      default:
+        return error.message || 'Login failed.'
+    }
+  }
+  if (error instanceof Error) {
+    return error.message
+  }
+  return 'Login failed.'
+}
+
+const isValidEmail = (value: string) => {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)
+}
 
 export default function LoginPage() {
   const [email, setEmail] = useState('')
@@ -23,13 +52,17 @@ export default function LoginPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
-    setLoading(true)
 
     try {
+      if (!isValidEmail(email)) {
+        setError('Enter a valid email address.')
+        return
+      }
+      setLoading(true)
       await login(email, password)
       router.push('/dashboard')
     } catch (err: any) {
-      setError(err.response?.data?.detail || 'Login failed')
+      setError(getAuthErrorMessage(err))
     } finally {
       setLoading(false)
     }
@@ -142,6 +175,12 @@ export default function LoginPage() {
                     Don’t have an account?{' '}
                     <Link href="/register" className="text-sky-600 hover:underline">
                       Create one
+                    </Link>
+                  </div>
+
+                  <div className="text-sm text-slate-500">
+                    <Link href="/reset-password" className="text-sky-600 hover:underline">
+                      Forgot your password?
                     </Link>
                   </div>
                 </form>
