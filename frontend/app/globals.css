@@ -26,9 +26,16 @@ body {
     rgb(var(--background-start-rgb));
 }
 
+.font-montserrat {
+  font-family: "Montserrat", "Avenir Next", "Segoe UI", sans-serif;
+}
+
+.font-lexend {
+  font-family: "Lexend", "Avenir Next", "Segoe UI", sans-serif;
+}
+
 @layer utilities {
   .text-balance {
     text-wrap: balance;
   }
 }
-

@@ -40,8 +40,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           email: firebaseUser.email,
           full_name: firebaseUser.displayName ?? null,
         })
+        firebaseUser
+          .getIdToken()
+          .then((token) => {
+            if (typeof window !== 'undefined') {
+              localStorage.setItem('idToken', token)
+            }
+          })
+          .catch(() => {})
       } else {
         setUser(null)
+        if (typeof window !== 'undefined') {
+          localStorage.removeItem('idToken')
+        }
       }
       setLoading(false)
     })
@@ -51,6 +62,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const login = async (email: string, password: string) => {
     const credential = await signInWithEmailAndPassword(auth, email, password)
+    const token = await credential.user.getIdToken()
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('idToken', token)
+    }
     setUser({
       uid: credential.user.uid,
       email: credential.user.email,
@@ -63,6 +78,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (fullName) {
       await updateProfile(credential.user, { displayName: fullName })
     }
+    const token = await credential.user.getIdToken()
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('idToken', token)
+    }
     setUser({
       uid: credential.user.uid,
       email: credential.user.email,
@@ -73,6 +92,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const logout = async () => {
     await signOut(auth)
     setUser(null)
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('idToken')
+    }
   }
 
   const resetPassword = async (email: string) => {

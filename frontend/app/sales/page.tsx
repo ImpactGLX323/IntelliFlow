@@ -22,6 +22,15 @@ interface Product {
   name: string
 }
 
+const initialForm = {
+  product_id: '',
+  quantity: '',
+  unit_price: '',
+  sale_date: new Date().toISOString().split('T')[0],
+  customer_id: '',
+  order_id: '',
+}
+
 export default function SalesPage() {
   const { user, loading: authLoading } = useAuth()
   const router = useRouter()
@@ -29,14 +38,7 @@ export default function SalesPage() {
   const [products, setProducts] = useState<Product[]>([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
-  const [formData, setFormData] = useState({
-    product_id: '',
-    quantity: '',
-    unit_price: '',
-    sale_date: new Date().toISOString().split('T')[0],
-    customer_id: '',
-    order_id: '',
-  })
+  const [formData, setFormData] = useState(initialForm)
 
   useEffect(() => {
     if (!authLoading && !user) {
@@ -84,14 +86,7 @@ export default function SalesPage() {
         order_id: formData.order_id || null,
       })
       setShowForm(false)
-      setFormData({
-        product_id: '',
-        quantity: '',
-        unit_price: '',
-        sale_date: new Date().toISOString().split('T')[0],
-        customer_id: '',
-        order_id: '',
-      })
+      setFormData(initialForm)
       loadSales()
     } catch (error: any) {
       alert(error.response?.data?.detail || 'Failed to create sale')
@@ -99,188 +94,179 @@ export default function SalesPage() {
   }
 
   const getProductName = (productId: number) => {
-    const product = products.find((p) => p.id === productId)
+    const product = products.find((item) => item.id === productId)
     return product?.name || `Product #${productId}`
   }
 
   if (authLoading || loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-primary-600"></div>
+      <div className="flex min-h-screen items-center justify-center bg-[#08111d]">
+        <div className="h-12 w-12 animate-spin rounded-full border-2 border-white/14 border-t-white" />
       </div>
     )
   }
 
+  const totalRevenue = sales.reduce((sum, sale) => sum + sale.total_amount, 0)
+
   return (
     <Layout>
-      <div className="px-4 py-6 sm:px-0">
-        <div className="flex justify-between items-center mb-6">
-          <h1 className="text-3xl font-bold text-gray-900">Sales</h1>
-          <button
-            onClick={() => setShowForm(!showForm)}
-            className="bg-primary-600 text-white px-4 py-2 rounded-md hover:bg-primary-700"
-          >
-            {showForm ? 'Cancel' : '+ Record Sale'}
-          </button>
-        </div>
+      <div className="space-y-6">
+        <section className="grid gap-6 xl:grid-cols-[1.05fr_0.95fr]">
+          <div className="rounded-[2rem] border border-white/12 bg-white/[0.04] p-7 backdrop-blur-sm">
+            <p className="font-montserrat text-xs font-semibold uppercase tracking-[0.28em] text-[#8ea2ba]">
+              Sales
+            </p>
+            <h1 className="font-montserrat mt-4 text-4xl font-semibold tracking-[-0.04em] text-white sm:text-5xl">
+              Commercial movement across your product catalogue.
+            </h1>
+            <p className="font-lexend mt-5 max-w-2xl text-sm leading-8 text-[#c1ccd8] sm:text-base">
+              Record transactions, monitor order value, and keep a clean operating ledger for revenue performance.
+            </p>
+          </div>
+
+          <div className="rounded-[2rem] border border-white/12 bg-white/[0.04] p-6 backdrop-blur-sm">
+            <div className="grid gap-4 sm:grid-cols-3">
+              {[
+                ['Revenue', `$${totalRevenue.toFixed(2)}`],
+                ['Transactions', sales.length.toString()],
+                ['Products Sold', new Set(sales.map((sale) => sale.product_id)).size.toString()],
+              ].map(([label, value]) => (
+                <div key={label} className="rounded-[1.4rem] border border-white/10 bg-white/[0.03] p-4">
+                  <p className="font-montserrat text-[11px] uppercase tracking-[0.18em] text-white/38">{label}</p>
+                  <p className="font-montserrat mt-3 text-2xl font-semibold text-white">{value}</p>
+                </div>
+              ))}
+            </div>
+            <button
+              onClick={() => setShowForm(!showForm)}
+              className="font-montserrat mt-5 rounded-full bg-[#0f223a] px-5 py-3 text-sm font-semibold uppercase tracking-[0.08em] text-white ring-1 ring-white/10"
+            >
+              {showForm ? 'Close form' : 'Record sale'}
+            </button>
+          </div>
+        </section>
 
         {showForm && (
-          <div className="bg-white rounded-lg shadow p-6 mb-6">
-            <h2 className="text-xl font-semibold mb-4">Record New Sale</h2>
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Product *
-                  </label>
-                  <select
-                    required
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                    value={formData.product_id}
-                    onChange={(e) => {
-                      setFormData({ ...formData, product_id: e.target.value })
-                      const product = products.find((p) => p.id === parseInt(e.target.value))
-                      if (product) {
-                        // You might want to fetch the product price here
-                      }
-                    }}
-                  >
-                    <option value="">Select a product</option>
-                    {products.map((product) => (
-                      <option key={product.id} value={product.id}>
-                        {product.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Quantity *
-                  </label>
-                  <input
-                    type="number"
-                    required
-                    min="1"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                    value={formData.quantity}
-                    onChange={(e) => setFormData({ ...formData, quantity: e.target.value })}
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Unit Price *
-                  </label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    required
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                    value={formData.unit_price}
-                    onChange={(e) => setFormData({ ...formData, unit_price: e.target.value })}
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Sale Date *
-                  </label>
-                  <input
-                    type="date"
-                    required
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                    value={formData.sale_date}
-                    onChange={(e) => setFormData({ ...formData, sale_date: e.target.value })}
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Customer ID
-                  </label>
-                  <input
-                    type="text"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                    value={formData.customer_id}
-                    onChange={(e) => setFormData({ ...formData, customer_id: e.target.value })}
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Order ID
-                  </label>
-                  <input
-                    type="text"
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                    value={formData.order_id}
-                    onChange={(e) => setFormData({ ...formData, order_id: e.target.value })}
-                  />
-                </div>
+          <section className="rounded-[1.9rem] border border-white/12 bg-white/[0.04] p-6 backdrop-blur-sm">
+            <h2 className="font-montserrat text-2xl font-semibold text-white">Record new sale</h2>
+            <form onSubmit={handleSubmit} className="mt-6 grid gap-5 md:grid-cols-2">
+              <div>
+                <label className="font-montserrat text-xs font-semibold uppercase tracking-[0.16em] text-white/46">Product</label>
+                <select
+                  required
+                  className="font-lexend mt-2 w-full rounded-2xl border border-white/12 bg-[#0e1828] px-4 py-3 text-sm text-white outline-none focus:border-white/24"
+                  value={formData.product_id}
+                  onChange={(e) => setFormData({ ...formData, product_id: e.target.value })}
+                >
+                  <option value="">Select a product</option>
+                  {products.map((product) => (
+                    <option key={product.id} value={product.id}>
+                      {product.name}
+                    </option>
+                  ))}
+                </select>
               </div>
-              <button
-                type="submit"
-                className="bg-primary-600 text-white px-4 py-2 rounded-md hover:bg-primary-700"
-              >
-                Record Sale
-              </button>
+              <div>
+                <label className="font-montserrat text-xs font-semibold uppercase tracking-[0.16em] text-white/46">Quantity</label>
+                <input
+                  type="number"
+                  required
+                  min="1"
+                  className="font-lexend mt-2 w-full rounded-2xl border border-white/12 bg-white/[0.04] px-4 py-3 text-sm text-white outline-none focus:border-white/24"
+                  value={formData.quantity}
+                  onChange={(e) => setFormData({ ...formData, quantity: e.target.value })}
+                />
+              </div>
+              <div>
+                <label className="font-montserrat text-xs font-semibold uppercase tracking-[0.16em] text-white/46">Unit Price</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  required
+                  className="font-lexend mt-2 w-full rounded-2xl border border-white/12 bg-white/[0.04] px-4 py-3 text-sm text-white outline-none focus:border-white/24"
+                  value={formData.unit_price}
+                  onChange={(e) => setFormData({ ...formData, unit_price: e.target.value })}
+                />
+              </div>
+              <div>
+                <label className="font-montserrat text-xs font-semibold uppercase tracking-[0.16em] text-white/46">Sale Date</label>
+                <input
+                  type="date"
+                  required
+                  className="font-lexend mt-2 w-full rounded-2xl border border-white/12 bg-white/[0.04] px-4 py-3 text-sm text-white outline-none focus:border-white/24"
+                  value={formData.sale_date}
+                  onChange={(e) => setFormData({ ...formData, sale_date: e.target.value })}
+                />
+              </div>
+              <div>
+                <label className="font-montserrat text-xs font-semibold uppercase tracking-[0.16em] text-white/46">Customer ID</label>
+                <input
+                  type="text"
+                  className="font-lexend mt-2 w-full rounded-2xl border border-white/12 bg-white/[0.04] px-4 py-3 text-sm text-white outline-none focus:border-white/24"
+                  value={formData.customer_id}
+                  onChange={(e) => setFormData({ ...formData, customer_id: e.target.value })}
+                />
+              </div>
+              <div>
+                <label className="font-montserrat text-xs font-semibold uppercase tracking-[0.16em] text-white/46">Order ID</label>
+                <input
+                  type="text"
+                  className="font-lexend mt-2 w-full rounded-2xl border border-white/12 bg-white/[0.04] px-4 py-3 text-sm text-white outline-none focus:border-white/24"
+                  value={formData.order_id}
+                  onChange={(e) => setFormData({ ...formData, order_id: e.target.value })}
+                />
+              </div>
+              <div className="md:col-span-2">
+                <button
+                  type="submit"
+                  className="font-montserrat rounded-full bg-[#0f223a] px-6 py-3 text-sm font-semibold uppercase tracking-[0.08em] text-white ring-1 ring-white/10"
+                >
+                  Record sale
+                </button>
+              </div>
             </form>
-          </div>
+          </section>
         )}
 
-        <div className="bg-white shadow rounded-lg overflow-hidden">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Date
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Product
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Quantity
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Unit Price
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Total
-                </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Order ID
-                </th>
-              </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
-              {sales.map((sale) => (
-                <tr key={sale.id}>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {new Date(sale.sale_date).toLocaleDateString()}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                    {getProductName(sale.product_id)}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {sale.quantity}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    ${sale.unit_price.toFixed(2)}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-                    ${sale.total_amount.toFixed(2)}
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                    {sale.order_id || '-'}
-                  </td>
+        <section className="overflow-hidden rounded-[1.9rem] border border-white/12 bg-white/[0.04] backdrop-blur-sm">
+          <div className="border-b border-white/10 px-6 py-5">
+            <h2 className="font-montserrat text-2xl font-semibold text-white">Sales ledger</h2>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="min-w-full text-left text-sm">
+              <thead className="bg-white/[0.03] text-white/42">
+                <tr>
+                  <th className="px-6 py-4 font-montserrat text-[11px] uppercase tracking-[0.18em]">Date</th>
+                  <th className="px-6 py-4 font-montserrat text-[11px] uppercase tracking-[0.18em]">Product</th>
+                  <th className="px-6 py-4 font-montserrat text-[11px] uppercase tracking-[0.18em]">Quantity</th>
+                  <th className="px-6 py-4 font-montserrat text-[11px] uppercase tracking-[0.18em]">Unit Price</th>
+                  <th className="px-6 py-4 font-montserrat text-[11px] uppercase tracking-[0.18em]">Total</th>
+                  <th className="px-6 py-4 font-montserrat text-[11px] uppercase tracking-[0.18em]">Order ID</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-          {sales.length === 0 && (
-            <div className="text-center py-12">
-              <p className="text-gray-500">No sales recorded yet.</p>
-            </div>
-          )}
-        </div>
+              </thead>
+              <tbody className="divide-y divide-white/8">
+                {sales.map((sale) => (
+                  <tr key={sale.id}>
+                    <td className="px-6 py-5 font-lexend text-white/64">
+                      {new Date(sale.sale_date).toLocaleDateString()}
+                    </td>
+                    <td className="px-6 py-5 font-montserrat font-semibold text-white">
+                      {getProductName(sale.product_id)}
+                    </td>
+                    <td className="px-6 py-5 font-montserrat text-white">{sale.quantity}</td>
+                    <td className="px-6 py-5 font-montserrat text-white">${sale.unit_price.toFixed(2)}</td>
+                    <td className="px-6 py-5 font-montserrat text-white">${sale.total_amount.toFixed(2)}</td>
+                    <td className="px-6 py-5 font-lexend text-white/64">{sale.order_id || '-'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {sales.length === 0 && (
+              <div className="px-6 py-12 text-center text-white/52">No sales recorded yet.</div>
+            )}
+          </div>
+        </section>
       </div>
     </Layout>
   )
 }
-

@@ -1,12 +1,14 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 from typing import List
+import logging
 from app.database import get_db
 from app.models import Product, User
 from app.schemas import ProductCreate, ProductUpdate, ProductResponse
 from app.auth import get_current_user
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 @router.post("/", response_model=ProductResponse, status_code=status.HTTP_201_CREATED)
 async def create_product(
@@ -14,19 +16,40 @@ async def create_product(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    # Check if SKU already exists
-    existing = db.query(Product).filter(Product.sku == product.sku).first()
+    logger.info(
+        "Create product request",
+        extra={
+            "owner_id": current_user.id,
+            "name": product.name,
+            "sku": product.sku,
+            "category": product.category,
+            "supplier": product.supplier,
+            "price": product.price,
+            "cost": product.cost,
+            "current_stock": product.current_stock,
+            "min_stock_threshold": product.min_stock_threshold,
+        },
+    )
+    sku = product.sku
+    existing = db.query(Product).filter(Product.sku == sku).first()
     if existing:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Product with this SKU already exists"
         )
-    
+
     db_product = Product(**product.dict(), owner_id=current_user.id)
-    db.add(db_product)
-    db.commit()
-    db.refresh(db_product)
-    return db_product
+    try:
+        db.add(db_product)
+        db.commit()
+        db.refresh(db_product)
+        return db_product
+    except Exception:
+        logger.exception(
+            "Create product failed",
+            extra={"owner_id": current_user.id, "sku": sku, "name": product.name},
+        )
+        raise
 
 @router.get("/", response_model=List[ProductResponse])
 async def get_products(
@@ -101,4 +124,3 @@ async def delete_product(
     db.delete(product)
     db.commit()
     return None
-

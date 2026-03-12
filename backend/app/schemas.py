@@ -5,7 +5,7 @@ from typing import Optional, List
 # Auth schemas
 class UserCreate(BaseModel):
     email: EmailStr
-    password: str
+    firebase_uid: str
     full_name: Optional[str] = None
 
 class UserResponse(BaseModel):
@@ -134,3 +134,26 @@ class RoadmapResponse(BaseModel):
     insights: List[str]
     generated_at: datetime
 
+
+class IngestRequest(BaseModel):
+    source_directory: Optional[str] = None
+    collection_name: Optional[str] = None
+
+
+class IngestedDocumentSummary(BaseModel):
+    file_name: str
+    authority: str
+    country: str
+    category: str
+    nodes_indexed: int
+
+
+class IngestResponse(BaseModel):
+    source_directory: str
+    collection_name: str
+    total_files_discovered: int
+    indexed_documents: int
+    indexed_nodes: int
+    embedding_dimensions: int
+    failed_files: List[str]
+    documents: List[IngestedDocumentSummary]

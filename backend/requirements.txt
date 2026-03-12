@@ -1,20 +1,30 @@
 fastapi==0.104.1
 uvicorn[standard]==0.24.0
 sqlalchemy==2.0.23
+psycopg[binary]==3.2.9
 
 passlib[bcrypt]==1.7.4
 python-multipart==0.0.6
+python-jose[cryptography]==3.3.0
 
-pydantic==2.5.0
-pydantic-settings==2.1.0
+pydantic==2.10.6
+pydantic-settings==2.6.1
+email-validator==2.2.0
 
 langchain==0.1.16
 langchain-community>=0.0.32,<0.1
 langchain-openai>=0.0.8,<0.1
 openai>=1.10.0,<2.0.0
-faiss-cpu==1.7.4
+llama-index-core>=0.12.0,<0.13
+llama-index-embeddings-openai>=0.3.0,<0.4
+llama-index-readers-docling>=0.3.0,<0.4
+llama-index-node-parser-docling>=0.3.0,<0.4
+llama-index-vector-store-firestore>=0.4.0,<0.5
+faiss-cpu==1.10.0
 numpy==1.26.4
-pandas==2.1.4
+pandas==2.2.3
+docling>=2.0.0,<3.0.0
+google-cloud-firestore>=2.18.0,<3.0.0
 
 python-dotenv==1.0.0
 alembic==1.12.1

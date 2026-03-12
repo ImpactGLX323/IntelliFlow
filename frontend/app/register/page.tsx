@@ -5,14 +5,8 @@ import { useRouter } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
 import Link from 'next/link'
 import Image from 'next/image'
-import { Manrope } from 'next/font/google'
-import logo from '../../docs/images/Intelliflow.png'
 import { FirebaseError } from 'firebase/app'
-
-const manrope = Manrope({
-  subsets: ['latin'],
-  weight: ['300', '400', '500', '600', '700'],
-})
+import logo from '../../docs/images/Intelliflow.png'
 
 const getAuthErrorMessage = (error: unknown) => {
   if (error instanceof FirebaseError) {
@@ -35,17 +29,10 @@ const getAuthErrorMessage = (error: unknown) => {
   return 'Registration failed.'
 }
 
-const isValidEmail = (value: string) => {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)
-}
+const isValidEmail = (value: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)
 
 const isValidPassword = (value: string) => {
-  return (
-    value.length >= 8 &&
-    /[A-Z]/.test(value) &&
-    /[a-z]/.test(value) &&
-    /\d/.test(value)
-  )
+  return value.length >= 8 && /[A-Z]/.test(value) && /[a-z]/.test(value) && /\d/.test(value)
 }
 
 export default function RegisterPage() {
@@ -82,7 +69,7 @@ export default function RegisterPage() {
     try {
       await register(email, password, fullName || undefined)
       router.push('/dashboard')
-    } catch (err: any) {
+    } catch (err: unknown) {
       setError(getAuthErrorMessage(err))
     } finally {
       setLoading(false)
@@ -90,147 +77,154 @@ export default function RegisterPage() {
   }
 
   return (
-    <div className={`relative min-h-screen overflow-hidden ${manrope.className}`}>
-      <div className="absolute inset-0 bg-slate-950" />
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(59,130,246,0.35)_0%,_rgba(2,6,23,0.9)_55%)]" />
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_15%_20%,_rgba(148,197,255,0.3)_0%,_transparent_45%)]" />
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_85%_70%,_rgba(59,130,246,0.25)_0%,_transparent_55%)]" />
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_2px_2px,_rgba(255,255,255,0.3)_1px,_transparent_0)] bg-[length:20px_20px] opacity-60" />
-      <div className="absolute -top-24 left-1/4 h-72 w-[60rem] -translate-x-1/2 rotate-6 bg-gradient-to-r from-sky-400/40 via-cyan-200/40 to-transparent blur-3xl animate-float-slow" />
-      <div className="absolute bottom-0 right-0 h-80 w-[55rem] translate-x-1/3 rotate-[-6deg] bg-gradient-to-l from-blue-500/40 via-slate-200/30 to-transparent blur-3xl animate-float-slower" />
+    <div className="relative min-h-screen overflow-hidden bg-[#08111d] text-white">
+      <video className="absolute inset-0 h-full w-full object-cover" autoPlay muted loop playsInline>
+        <source src="/images/bg.mp4" type="video/mp4" />
+      </video>
+      <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(8,17,29,0.98),rgba(8,17,29,0.9)_44%,rgba(8,17,29,0.84))]" />
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.1),transparent_24%)]" />
 
-      <header className="relative z-10 flex items-center justify-between px-6 py-6 sm:px-10">
-        <div className="flex items-center gap-3">
-          <Image src={logo} alt="IntelliFlow" className="h-9 w-auto" priority />
+      <header className="relative z-10 px-6 pt-8 sm:px-10">
+        <div className="mx-auto flex max-w-7xl items-center justify-between gap-4">
+          <Link href="/" className="flex items-center gap-3">
+            <Image src={logo} alt="IntelliFlow" className="h-9 w-auto" priority />
+            <span className="font-montserrat text-[11px] font-semibold uppercase tracking-[0.38em] text-white/68">
+              IntelliFlow
+            </span>
+          </Link>
+          <Link
+            href="/login"
+            className="font-montserrat rounded-full border border-white/12 bg-white/[0.04] px-5 py-2.5 text-xs font-semibold uppercase tracking-[0.12em] text-white"
+          >
+            Login
+          </Link>
         </div>
       </header>
 
-      <main className="relative z-10 flex items-center justify-center px-6 pb-16 sm:px-10">
-        <div className="w-full max-w-xl rounded-3xl border border-white/40 bg-white/85 p-8 shadow-[0_30px_80px_rgba(15,23,42,0.45)] backdrop-blur-xl sm:p-10">
-          <div className="space-y-2 text-center">
-            <h1 className="text-3xl font-semibold text-slate-800 sm:text-4xl">
-              Create Your Account
-            </h1>
-            <p className="text-sm text-slate-500 sm:text-base">
-              Join IntelliFlow today to simplify your workflow.
+      <main className="relative z-10 px-6 pb-16 pt-14 sm:px-10">
+        <div className="mx-auto grid max-w-7xl gap-10 lg:grid-cols-[0.88fr_1.12fr] lg:items-center">
+          <section className="max-w-2xl">
+            <p className="font-montserrat text-xs font-semibold uppercase tracking-[0.3em] text-[#b9c7d8]">
+              Workspace Setup
             </p>
-          </div>
+            <h1 className="font-montserrat mt-6 text-5xl font-semibold leading-[0.94] tracking-[-0.05em] text-white sm:text-6xl">
+              Build your inventory command center.
+            </h1>
+            <p className="font-lexend mt-6 max-w-xl text-base leading-8 text-[#c8d2de]">
+              Create an IntelliFlow workspace for inventory precision, regional trade visibility,
+              and compliance-ready operational control.
+            </p>
 
-          <form className="mt-8 space-y-4" onSubmit={handleSubmit}>
-            {error && (
-              <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-                {error}
+            <div className="mt-10 grid gap-4">
+              {[
+                'ASEAN inventory synchronization',
+                'Cross-border shipment visibility',
+                'LHDN-ready compliance workflows',
+              ].map((item) => (
+                <div
+                  key={item}
+                  className="font-lexend rounded-[1.4rem] border border-white/12 bg-white/[0.04] px-5 py-4 text-sm text-white/76 backdrop-blur-sm"
+                >
+                  {item}
+                </div>
+              ))}
+            </div>
+          </section>
+
+          <section className="rounded-[2rem] border border-white/12 bg-white/[0.05] p-7 shadow-[0_30px_80px_-50px_rgba(0,0,0,0.9)] backdrop-blur-xl sm:p-8">
+            <p className="font-montserrat text-xs font-semibold uppercase tracking-[0.28em] text-[#8ea2ba]">
+              Create Account
+            </p>
+            <h2 className="font-montserrat mt-4 text-3xl font-semibold tracking-[-0.04em] text-white">
+              Open a new workspace.
+            </h2>
+            <p className="font-lexend mt-3 text-sm leading-7 text-[#c1ccd8]">
+              Set up your credentials and start configuring your regional inventory environment.
+            </p>
+
+            <form className="mt-8 space-y-5" onSubmit={handleSubmit}>
+              {error && (
+                <div className="rounded-2xl border border-red-400/20 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+                  {error}
+                </div>
+              )}
+
+              <div>
+                <label className="font-montserrat text-xs font-semibold uppercase tracking-[0.16em] text-white/46">
+                  Full name
+                </label>
+                <input
+                  type="text"
+                  className="font-lexend mt-2 w-full rounded-2xl border border-white/12 bg-white/[0.04] px-4 py-3 text-sm text-white outline-none placeholder:text-white/28 focus:border-white/24"
+                  value={fullName}
+                  onChange={(e) => setFullName(e.target.value)}
+                  placeholder="Jane Doe"
+                />
               </div>
-            )}
 
-            <label className="block text-sm text-slate-600">
-              Full Name
-              <input
-                type="text"
-                className="mt-2 w-full rounded-xl border border-slate-200 bg-white/70 px-4 py-2.5 text-slate-800 shadow-sm outline-none transition focus:border-sky-400 focus:ring-4 focus:ring-sky-100"
-                value={fullName}
-                onChange={(e) => setFullName(e.target.value)}
-                placeholder="Jane Doe"
-              />
-            </label>
+              <div>
+                <label className="font-montserrat text-xs font-semibold uppercase tracking-[0.16em] text-white/46">
+                  Email address
+                </label>
+                <input
+                  type="email"
+                  required
+                  className="font-lexend mt-2 w-full rounded-2xl border border-white/12 bg-white/[0.04] px-4 py-3 text-sm text-white outline-none placeholder:text-white/28 focus:border-white/24"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="you@company.com"
+                />
+              </div>
 
-            <label className="block text-sm text-slate-600">
-              Email Address
-              <input
-                type="email"
-                required
-                className="mt-2 w-full rounded-xl border border-slate-200 bg-white/70 px-4 py-2.5 text-slate-800 shadow-sm outline-none transition focus:border-sky-400 focus:ring-4 focus:ring-sky-100"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="you@intelliflow.ai"
-              />
-            </label>
+              <div>
+                <label className="font-montserrat text-xs font-semibold uppercase tracking-[0.16em] text-white/46">
+                  Password
+                </label>
+                <input
+                  type="password"
+                  required
+                  className="font-lexend mt-2 w-full rounded-2xl border border-white/12 bg-white/[0.04] px-4 py-3 text-sm text-white outline-none placeholder:text-white/28 focus:border-white/24"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="Create password"
+                />
+                <span className="font-lexend mt-2 block text-xs text-white/42">
+                  8+ characters, including upper case, lower case, and a number.
+                </span>
+              </div>
 
-            <label className="block text-sm text-slate-600">
-              Password
-              <input
-                type="password"
-                required
-                className="mt-2 w-full rounded-xl border border-slate-200 bg-white/70 px-4 py-2.5 text-slate-800 shadow-sm outline-none transition focus:border-sky-400 focus:ring-4 focus:ring-sky-100"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="Create a password"
-              />
-              <span className="mt-2 block text-xs text-slate-400">
-                8+ characters, with upper & lower case letters and a number.
-              </span>
-            </label>
+              <div>
+                <label className="font-montserrat text-xs font-semibold uppercase tracking-[0.16em] text-white/46">
+                  Confirm password
+                </label>
+                <input
+                  type="password"
+                  required
+                  className="font-lexend mt-2 w-full rounded-2xl border border-white/12 bg-white/[0.04] px-4 py-3 text-sm text-white outline-none placeholder:text-white/28 focus:border-white/24"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  placeholder="Confirm password"
+                />
+              </div>
 
-            <label className="block text-sm text-slate-600">
-              Confirm Password
-              <input
-                type="password"
-                required
-                className="mt-2 w-full rounded-xl border border-slate-200 bg-white/70 px-4 py-2.5 text-slate-800 shadow-sm outline-none transition focus:border-sky-400 focus:ring-4 focus:ring-sky-100"
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
-                placeholder="Confirm your password"
-              />
-            </label>
+              <button
+                type="submit"
+                disabled={loading}
+                className="font-montserrat w-full rounded-full bg-[#0f223a] px-6 py-3 text-sm font-semibold uppercase tracking-[0.08em] text-white ring-1 ring-white/10 disabled:opacity-60"
+              >
+                {loading ? 'Creating account...' : 'Create workspace'}
+              </button>
+            </form>
 
-            <button
-              type="submit"
-              disabled={loading}
-              className="mt-2 w-full rounded-full bg-sky-600 px-6 py-2.5 text-sm font-semibold uppercase tracking-wide text-white shadow-lg shadow-sky-500/40 transition hover:bg-sky-500 disabled:cursor-not-allowed disabled:opacity-70"
-            >
-              {loading ? 'Creating Account...' : 'Register'}
-            </button>
-          </form>
-
-          <div className="mt-6 flex items-center gap-4 text-xs text-slate-500">
-            <span className="h-px flex-1 bg-slate-200" />
-            Or register with
-            <span className="h-px flex-1 bg-slate-200" />
-          </div>
-
-          <div className="mt-4 flex items-center justify-center gap-6 text-xs text-slate-500">
-            <button className="flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 transition hover:border-slate-300">
-              <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-slate-900 text-white">
-                G
-              </span>
-              Google
-            </button>
-            <button className="flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 transition hover:border-slate-300">
-              <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-slate-900 text-white">
-                A
-              </span>
-              Apple
-            </button>
-          </div>
-
-          <div className="mt-6 text-center text-sm text-slate-500">
-            Already have an account?{' '}
-            <Link href="/login" className="font-semibold text-sky-700 hover:text-sky-600">
-              Sign in
-            </Link>
-          </div>
+            <p className="mt-6 text-sm text-white/58">
+              <span className="font-lexend">Already have an account? </span>
+              <Link href="/login" className="font-lexend underline underline-offset-4">
+                Sign in
+              </Link>
+            </p>
+          </section>
         </div>
       </main>
-
-      <style jsx>{`
-        @keyframes float {
-          0% {
-            transform: translateY(0px);
-          }
-          50% {
-            transform: translateY(-10px);
-          }
-          100% {
-            transform: translateY(0px);
-          }
-        }
-        .animate-float-slow {
-          animation: float 16s ease-in-out infinite;
-        }
-        .animate-float-slower {
-          animation: float 22s ease-in-out infinite;
-        }
-      `}</style>
     </div>
   )
 }
