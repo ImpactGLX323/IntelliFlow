@@ -1,0 +1,13 @@
+.DS_Store
+.env
+*.db
+*.sqlite
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+venv/
+env/
+ENV/
+secrets/*.json
