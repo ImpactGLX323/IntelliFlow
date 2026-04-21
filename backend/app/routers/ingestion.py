@@ -2,7 +2,7 @@ import logging
 
 from fastapi import APIRouter, HTTPException
 
-from app.rag_ingestion import rag_ingestion_service
+from app.rag_ingestion import get_rag_ingestion_service
 from app.schemas import IngestRequest, IngestResponse
 
 logger = logging.getLogger(__name__)
@@ -13,7 +13,7 @@ router = APIRouter()
 @router.post("/ingest", response_model=IngestResponse)
 async def ingest_documents(request: IngestRequest) -> IngestResponse:
     try:
-        summary = rag_ingestion_service.ingest_directory(
+        summary = get_rag_ingestion_service().ingest_directory(
             source_directory=request.source_directory,
             collection_name=request.collection_name,
         )

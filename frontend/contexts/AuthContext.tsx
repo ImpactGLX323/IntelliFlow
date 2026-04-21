@@ -9,22 +9,8 @@ import {
   sendPasswordResetEmail,
   updateProfile,
 } from 'firebase/auth'
-import { auth } from '@/lib/firebase'
-
-interface User {
-  uid: string
-  email: string | null
-  full_name: string | null
-}
-
-interface AuthContextType {
-  user: User | null
-  loading: boolean
-  login: (email: string, password: string) => Promise<void>
-  register: (email: string, password: string, fullName?: string) => Promise<void>
-  logout: () => Promise<void>
-  resetPassword: (email: string) => Promise<void>
-}
+import { auth } from '@/lib/firebase/client'
+import type { AuthContextType, User } from '@/types/auth'
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
 

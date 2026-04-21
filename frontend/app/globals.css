@@ -3,9 +3,20 @@
 @tailwind utilities;
 
 :root {
-  --foreground-rgb: 0, 0, 0;
-  --background-start-rgb: 214, 219, 220;
-  --background-end-rgb: 255, 255, 255;
+  --ive-canvas: #f3f3f1;
+  --ive-canvas-soft: #fbfbf9;
+  --ive-device: #090a0c;
+  --ive-device-2: #111318;
+  --ive-glass: rgba(255, 255, 255, 0.055);
+  --ive-line: rgba(255, 255, 255, 0.13);
+  --ive-amber: #ff9b3d;
+  --ive-lime: #d7ff4d;
+  --ive-blue: #9fc7ff;
+  --ive-text: #f7f7f3;
+  --ive-muted: rgba(247, 247, 243, 0.62);
+  --foreground-rgb: 15, 17, 20;
+  --background-start-rgb: 243, 243, 241;
+  --background-end-rgb: 251, 251, 249;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -18,24 +29,116 @@
 
 body {
   color: rgb(var(--foreground-rgb));
-  background: linear-gradient(
-      to bottom,
-      transparent,
-      rgb(var(--background-end-rgb))
-    )
-    rgb(var(--background-start-rgb));
+  background:
+    radial-gradient(circle at 50% -20%, rgba(255, 255, 255, 0.95), transparent 34rem),
+    linear-gradient(180deg, var(--ive-canvas-soft), var(--ive-canvas));
+  font-feature-settings: "tnum";
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  max-width: 100%;
+  overflow-x: hidden;
 }
 
 .font-montserrat {
-  font-family: "Montserrat", "Avenir Next", "Segoe UI", sans-serif;
+  font-family: "Avenir Next", "Helvetica Neue", "Segoe UI", sans-serif;
 }
 
 .font-lexend {
-  font-family: "Lexend", "Avenir Next", "Segoe UI", sans-serif;
+  font-family: "Avenir Next", "Helvetica Neue", "Segoe UI", sans-serif;
 }
 
 @layer utilities {
   .text-balance {
     text-wrap: balance;
+  }
+}
+
+@layer components {
+  .ive-device,
+  .ive-panel {
+    min-width: 0;
+  }
+
+  .ive-device :where(div, section, article, header, main, nav, aside, form),
+  .ive-panel :where(div, section, article, header, main, nav, aside, form) {
+    min-width: 0;
+  }
+
+  .ive-device :where(h1, h2, h3, p, a, span, button, label, input, textarea, select, td, th),
+  .ive-panel :where(h1, h2, h3, p, a, span, button, label, input, textarea, select, td, th) {
+    min-width: 0;
+    overflow-wrap: anywhere;
+    word-break: normal;
+  }
+
+  .ive-device :where(table) {
+    min-width: max-content;
+  }
+
+  .ive-device :where(.recharts-responsive-container, .recharts-wrapper) {
+    max-width: 100%;
+  }
+
+  .hud-workspace {
+    background:
+      radial-gradient(circle at 50% 0%, rgba(255, 255, 255, 0.95), transparent 30rem),
+      linear-gradient(180deg, var(--ive-canvas-soft), var(--ive-canvas));
+  }
+
+  .hud-public {
+    background:
+      radial-gradient(circle at 50% -12%, rgba(255, 255, 255, 0.9), transparent 32rem),
+      linear-gradient(180deg, #f8f8f6, #eeeeeb);
+  }
+
+  .hud-readout {
+    color: var(--ive-lime);
+    font-family: "SFMono-Regular", "Roboto Mono", "Cascadia Mono", "Consolas", monospace;
+    letter-spacing: -0.04em;
+    text-shadow: 0 0 18px rgba(217, 255, 92, 0.26);
+  }
+
+  .hud-label {
+    border: 1px solid rgba(255, 155, 61, 0.62);
+    color: var(--ive-amber);
+    background: rgba(255, 112, 41, 0.08);
+    box-shadow: inset 0 0 18px rgba(255, 112, 41, 0.08);
+  }
+
+  .ive-device {
+    background:
+      radial-gradient(circle at 50% -24%, rgba(255, 255, 255, 0.12), transparent 28rem),
+      linear-gradient(145deg, #14161a, #07080a 46%, #0b0c0f);
+    border: 1px solid rgba(255, 255, 255, 0.11);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.14),
+      inset 0 -28px 80px rgba(0, 0, 0, 0.55),
+      0 42px 120px rgba(0, 0, 0, 0.24),
+      0 10px 26px rgba(0, 0, 0, 0.14);
+  }
+
+  .ive-device::before {
+    content: "";
+    pointer-events: none;
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background:
+      linear-gradient(115deg, rgba(255, 255, 255, 0.11), transparent 28%, transparent 74%, rgba(255, 255, 255, 0.04)),
+      radial-gradient(circle at 55% 42%, rgba(255, 255, 255, 0.055), transparent 22rem);
+    opacity: 0.8;
+  }
+
+  .ive-panel {
+    border: 1px solid var(--ive-line);
+    background: rgba(255, 255, 255, 0.045);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+    backdrop-filter: blur(18px);
   }
 }

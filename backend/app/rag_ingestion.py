@@ -2,17 +2,18 @@ import logging
 import os
 import re
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from google.cloud import firestore
 from google.cloud.firestore_v1.base_vector_query import DistanceMeasure
-from llama_index.core import StorageContext, VectorStoreIndex
-from llama_index.core.schema import Document
-from llama_index.embeddings.openai import OpenAIEmbedding
-from llama_index.node_parser.docling import DoclingNodeParser
-from llama_index.readers.docling import DoclingReader
-from llama_index_vector_store_firestore import FirestoreVectorStore
 from pydantic import BaseModel, Field
+
+if TYPE_CHECKING:
+    from llama_index.core.schema import Document
+    from llama_index.embeddings.openai import OpenAIEmbedding
+    from llama_index.node_parser.docling import DoclingNodeParser
+    from llama_index.readers.docling import DoclingReader
+    from llama_index_vector_store_firestore import FirestoreVectorStore
 
 logger = logging.getLogger(__name__)
 
@@ -49,14 +50,12 @@ class FirestoreRAGIngestionService:
             str(backend_root / "docs" / "official_docs"),
         )
         self.fallback_source_directory = repo_root / "frontend" / "docs" / "official_docs"
-        self.reader = DoclingReader(export_type="json")
-        self.node_parser = DoclingNodeParser()
-        self.embed_model = OpenAIEmbedding(
-            model=self.embedding_model,
-            dimensions=self.embedding_dimensions,
-        )
+        self.reader: Any | None = None
+        self.node_parser: Any | None = None
+        self.embed_model: Any | None = None
 
     def ingest_directory(self, source_directory: str | None = None, collection_name: str | None = None) -> IngestionSummary:
+        self._ensure_runtime_dependencies()
         source_path = Path(source_directory or self.default_source_directory).expanduser().resolve()
         if (not source_directory) and (not source_path.exists()) and self.fallback_source_directory.exists():
             source_path = self.fallback_source_directory.resolve()
@@ -77,6 +76,8 @@ class FirestoreRAGIngestionService:
 
         if not pdf_paths:
             return summary
+
+        from llama_index.core import StorageContext, VectorStoreIndex
 
         vector_store = self._build_vector_store(target_collection)
         storage_context = StorageContext.from_defaults(vector_store=vector_store)
@@ -119,7 +120,9 @@ class FirestoreRAGIngestionService:
 
         return summary
 
-    def _build_vector_store(self, collection_name: str) -> FirestoreVectorStore:
+    def _build_vector_store(self, collection_name: str) -> Any:
+        from llama_index_vector_store_firestore import FirestoreVectorStore
+
         if not self.firestore_project:
             raise RuntimeError(
                 "GOOGLE_CLOUD_PROJECT or FIREBASE_PROJECT_ID must be set for Firestore vector storage."
@@ -132,11 +135,15 @@ class FirestoreRAGIngestionService:
             distance_strategy=DistanceMeasure.COSINE,
         )
 
-    def _load_pdf_documents(self, pdf_path: Path) -> list[Document]:
+    def _load_pdf_documents(self, pdf_path: Path) -> list[Any]:
+        if self.reader is None:
+            raise RuntimeError("Docling reader not initialized.")
+        from llama_index.core.schema import Document
+
         loaded = self.reader.load_data(file_path=str(pdf_path))
         return [doc for doc in loaded if isinstance(doc, Document)]
 
-    def _tag_document(self, document: Document, pdf_path: Path) -> Document:
+    def _tag_document(self, document: Any, pdf_path: Path) -> Any:
         metadata = dict(document.metadata or {})
         inferred = self._infer_metadata(pdf_path)
         metadata.update(
@@ -204,6 +211,8 @@ class FirestoreRAGIngestionService:
         return safe_name[:240]
 
     def _validate_node_embeddings(self, nodes: list[Any]) -> None:
+        if self.embed_model is None:
+            raise RuntimeError("Embedding model not initialized.")
         for node in nodes:
             embedding = self.embed_model.get_text_embedding(node.get_content(metadata_mode="all"))
             if len(embedding) != self.embedding_dimensions:
@@ -214,4 +223,29 @@ class FirestoreRAGIngestionService:
             node.embedding = embedding
 
 
-rag_ingestion_service = FirestoreRAGIngestionService()
+    def _ensure_runtime_dependencies(self) -> None:
+        if self.reader is None:
+            from llama_index.readers.docling import DoclingReader
+
+            self.reader = DoclingReader(export_type="json")
+        if self.node_parser is None:
+            from llama_index.node_parser.docling import DoclingNodeParser
+
+            self.node_parser = DoclingNodeParser()
+        if self.embed_model is None:
+            from llama_index.embeddings.openai import OpenAIEmbedding
+
+            self.embed_model = OpenAIEmbedding(
+                model=self.embedding_model,
+                dimensions=self.embedding_dimensions,
+            )
+
+
+_rag_ingestion_service: FirestoreRAGIngestionService | None = None
+
+
+def get_rag_ingestion_service() -> FirestoreRAGIngestionService:
+    global _rag_ingestion_service
+    if _rag_ingestion_service is None:
+        _rag_ingestion_service = FirestoreRAGIngestionService()
+    return _rag_ingestion_service
