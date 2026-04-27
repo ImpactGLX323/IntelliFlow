@@ -753,12 +753,18 @@ class ShipmentRead(BaseModel):
 
 class DelayImpactRead(BaseModel):
     shipment_id: int
+    shipment_number: str
     related_type: Optional[str]
     related_id: Optional[str]
-    affected_order: Optional[dict]
-    affected_products: List[dict]
-    estimated_delay_days: int
+    delayed_shipment: bool
+    delay_days: int
+    affected_skus: List[dict]
+    affected_purchase_orders: List[dict]
+    affected_sales_orders: List[dict]
+    revenue_at_risk: Optional[float]
+    inventory_cover_remaining: List[dict]
     risk_level: str
+    recommended_mitigation: List[str]
 
 
 class RouteCreate(BaseModel):

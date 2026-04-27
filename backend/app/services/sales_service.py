@@ -7,7 +7,7 @@ from fastapi import HTTPException, status
 from sqlalchemy.orm import Session, joinedload
 
 from app.models import Product, Sale, SalesOrder, SalesOrderItem, StockReservation, Warehouse
-from app.services.stock_ledger_service import create_inventory_transaction, reserve_stock, sync_product_current_stock
+from app.services.stock_ledger_service import consume_reservation, create_inventory_transaction, reserve_stock, sync_product_current_stock
 
 SALES_ORDER_STATUSES = {
     "DRAFT",
@@ -180,21 +180,12 @@ def fulfill_sales_order_item(
             if to_consume <= 0:
                 break
             consume_qty = min(to_consume, reservation.quantity)
-            create_inventory_transaction(
+            consume_reservation(
                 db,
-                product_id=item.product_id,
-                warehouse_id=item.warehouse_id,
-                transaction_type="SALE_SHIPPED",
+                reservation.id,
                 quantity=consume_qty,
-                direction="OUT",
-                reference_type="SALES_ORDER_ITEM",
-                reference_id=str(item.id),
-                reason="Sales order fulfilled",
                 commit=False,
             )
-            reservation.quantity -= consume_qty
-            reservation.status = "CONSUMED" if reservation.quantity == 0 else "ACTIVE"
-            db.add(reservation)
             to_consume -= consume_qty
 
         item.quantity_fulfilled += quantity

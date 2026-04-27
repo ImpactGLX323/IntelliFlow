@@ -566,22 +566,38 @@ def release_reservation(db: Session, reservation_id: int, *, created_by: Optiona
         raise
 
 
-def consume_reservation(db: Session, reservation_id: int, *, created_by: Optional[int] = None) -> StockReservation:
+def consume_reservation(
+    db: Session,
+    reservation_id: int,
+    *,
+    quantity: Optional[int] = None,
+    created_by: Optional[int] = None,
+    commit: bool = True,
+) -> StockReservation:
     reservation = db.query(StockReservation).filter(StockReservation.id == reservation_id).first()
     if reservation is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Reservation not found")
     if reservation.status != "ACTIVE":
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Reservation is not active")
+    consume_quantity = reservation.quantity if quantity is None else quantity
+    if consume_quantity <= 0:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Quantity must be greater than zero")
+    if consume_quantity > reservation.quantity:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Consumption quantity exceeds reserved quantity",
+        )
 
     try:
-        reservation.status = "CONSUMED"
+        reservation.quantity -= consume_quantity
+        reservation.status = "CONSUMED" if reservation.quantity == 0 else "ACTIVE"
         db.add(reservation)
         create_inventory_transaction(
             db,
             product_id=reservation.product_id,
             warehouse_id=reservation.warehouse_id,
             transaction_type="SALE_SHIPPED",
-            quantity=reservation.quantity,
+            quantity=consume_quantity,
             direction="OUT",
             reference_type=reservation.reference_type,
             reference_id=reservation.reference_id,
@@ -590,8 +606,11 @@ def consume_reservation(db: Session, reservation_id: int, *, created_by: Optiona
             commit=False,
         )
         sync_product_current_stock(db, reservation.product_id)
-        db.commit()
-        db.refresh(reservation)
+        if commit:
+            db.commit()
+            db.refresh(reservation)
+        else:
+            db.flush()
         return reservation
     except Exception:
         db.rollback()

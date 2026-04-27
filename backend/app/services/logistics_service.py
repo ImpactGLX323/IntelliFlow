@@ -165,14 +165,15 @@ def create_shipment(db: Session, **payload) -> Shipment:
     shipment = Shipment(shipment_number=_generate_shipment_number(db), status="CREATED", **payload)
     db.add(shipment)
     db.commit()
-    db.refresh(shipment)
-    return shipment
+    return get_shipment(db, shipment.id)
 
 
 def update_shipment_status(db: Session, shipment_id: int, **payload) -> Shipment:
     shipment = db.query(Shipment).filter(Shipment.id == shipment_id).first()
     if shipment is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Shipment not found")
+    if not payload.get("status"):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Shipment status is required")
     for field, value in payload.items():
         setattr(shipment, field, value)
     db.add(shipment)

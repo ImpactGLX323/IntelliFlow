@@ -53,6 +53,15 @@ async def post_shipment(
     return create_shipment(db, **payload.model_dump())
 
 
+@router.get("/shipments/analytics/delayed", response_model=List[ShipmentRead])
+async def delayed_shipments(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _ = current_user
+    return get_delayed_shipments(db)
+
+
 @router.get("/shipments/{shipment_id}", response_model=ShipmentRead)
 async def fetch_shipment(
     shipment_id: int,
@@ -83,15 +92,6 @@ async def post_shipment_leg(
 ):
     _ = current_user
     return add_shipment_leg(db, shipment_id, **payload.model_dump())
-
-
-@router.get("/shipments/analytics/delayed", response_model=List[ShipmentRead])
-async def delayed_shipments(
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
-    _ = current_user
-    return get_delayed_shipments(db)
 
 
 @router.get("/shipments/{shipment_id}/delay-impact", response_model=DelayImpactRead)

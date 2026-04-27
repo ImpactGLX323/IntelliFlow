@@ -55,6 +55,28 @@ async def post_return_order(
     )
 
 
+@router.get("/analytics/high-return-products", response_model=List[HighReturnProductRead])
+async def high_return_products(
+    start_date: datetime = Query(...),
+    end_date: datetime = Query(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _ = current_user
+    return get_high_return_products(db, start_date, end_date)
+
+
+@router.get("/analytics/profit-leakage", response_model=ProfitLeakageReportRead)
+async def profit_leakage(
+    start_date: datetime = Query(...),
+    end_date: datetime = Query(...),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    _ = current_user
+    return get_profit_leakage_report(db, start_date, end_date)
+
+
 @router.get("/{return_order_id}", response_model=ReturnOrderRead)
 async def fetch_return_order(
     return_order_id: int,
@@ -96,25 +118,3 @@ async def refund_return(
 ):
     _ = current_user
     return mark_refunded(db, return_order_id=return_order_id, refund_amount=payload.refund_amount)
-
-
-@router.get("/analytics/high-return-products", response_model=List[HighReturnProductRead])
-async def high_return_products(
-    start_date: datetime = Query(...),
-    end_date: datetime = Query(...),
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
-    _ = current_user
-    return get_high_return_products(db, start_date, end_date)
-
-
-@router.get("/analytics/profit-leakage", response_model=ProfitLeakageReportRead)
-async def profit_leakage(
-    start_date: datetime = Query(...),
-    end_date: datetime = Query(...),
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
-    _ = current_user
-    return get_profit_leakage_report(db, start_date, end_date)
