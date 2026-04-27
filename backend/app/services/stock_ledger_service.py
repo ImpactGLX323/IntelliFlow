@@ -239,6 +239,7 @@ def reserve_stock(
     reference_type: Optional[str] = None,
     reference_id: Optional[str] = None,
     created_by: Optional[int] = None,
+    commit: bool = True,
 ) -> StockReservation:
     if quantity <= 0:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Quantity must be greater than zero")
@@ -277,8 +278,11 @@ def reserve_stock(
             commit=False,
         )
         sync_product_current_stock(db, product_id)
-        db.commit()
-        db.refresh(reservation)
+        if commit:
+            db.commit()
+            db.refresh(reservation)
+        else:
+            db.flush()
         return reservation
     except Exception:
         db.rollback()
@@ -357,6 +361,7 @@ def receive_purchase(
     quantity: int,
     reference_id: Optional[str] = None,
     created_by: Optional[int] = None,
+    commit: bool = True,
 ) -> InventoryTransaction:
     return create_inventory_transaction(
         db,
@@ -369,6 +374,7 @@ def receive_purchase(
         reference_id=reference_id,
         reason="Purchase received",
         created_by=created_by,
+        commit=commit,
     )
 
 
@@ -382,6 +388,7 @@ def adjust_stock(
     reason: str,
     notes: Optional[str] = None,
     created_by: Optional[int] = None,
+    commit: bool = True,
 ) -> InventoryTransaction:
     if adjustment_type not in {"POSITIVE", "NEGATIVE"}:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid adjustment_type")
@@ -399,6 +406,7 @@ def adjust_stock(
         reason=reason,
         notes=notes,
         created_by=created_by,
+        commit=commit,
     )
 
 
@@ -502,3 +510,48 @@ def seed_product_stock_from_legacy_current_stock(
         created_by=created_by,
     )
 
+
+def record_damaged_stock(
+    db: Session,
+    *,
+    product_id: int,
+    warehouse_id: int,
+    quantity: int,
+    reason: str,
+    created_by: Optional[int] = None,
+    commit: bool = True,
+) -> InventoryTransaction:
+    return create_inventory_transaction(
+        db,
+        product_id=product_id,
+        warehouse_id=warehouse_id,
+        transaction_type="DAMAGED",
+        quantity=quantity,
+        direction="NEUTRAL",
+        reason=reason,
+        created_by=created_by,
+        commit=commit,
+    )
+
+
+def record_quarantined_stock(
+    db: Session,
+    *,
+    product_id: int,
+    warehouse_id: int,
+    quantity: int,
+    reason: str,
+    created_by: Optional[int] = None,
+    commit: bool = True,
+) -> InventoryTransaction:
+    return create_inventory_transaction(
+        db,
+        product_id=product_id,
+        warehouse_id=warehouse_id,
+        transaction_type="QUARANTINED",
+        quantity=quantity,
+        direction="NEUTRAL",
+        reason=reason,
+        created_by=created_by,
+        commit=commit,
+    )

@@ -268,3 +268,500 @@ class StockTransferRequest(BaseModel):
     to_warehouse_id: int
     quantity: int = Field(gt=0)
     notes: Optional[str] = None
+
+
+class CustomerCreate(BaseModel):
+    name: str
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    address: Optional[str] = None
+
+
+class CustomerRead(BaseModel):
+    id: int
+    name: str
+    email: Optional[str]
+    phone: Optional[str]
+    address: Optional[str]
+    created_at: datetime
+    updated_at: Optional[datetime]
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class SupplierCreate(BaseModel):
+    name: str
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    address: Optional[str] = None
+    lead_time_days: Optional[int] = None
+
+
+class SupplierRead(BaseModel):
+    id: int
+    name: str
+    email: Optional[str]
+    phone: Optional[str]
+    address: Optional[str]
+    lead_time_days: Optional[int]
+    created_at: datetime
+    updated_at: Optional[datetime]
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class SalesOrderItemCreate(BaseModel):
+    product_id: int
+    warehouse_id: Optional[int] = None
+    quantity_ordered: int = Field(gt=0)
+    unit_price: float = 0
+
+
+class SalesOrderCreate(BaseModel):
+    customer_id: Optional[int] = None
+    order_date: Optional[datetime] = None
+    expected_ship_date: Optional[datetime] = None
+    notes: Optional[str] = None
+    items: List[SalesOrderItemCreate]
+
+
+class SalesOrderItemRead(BaseModel):
+    id: int
+    sales_order_id: int
+    product_id: int
+    warehouse_id: Optional[int]
+    quantity_ordered: int
+    quantity_reserved: int
+    quantity_fulfilled: int
+    unit_price: float
+    created_at: datetime
+    updated_at: Optional[datetime]
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class SalesOrderRead(BaseModel):
+    id: int
+    order_number: str
+    customer_id: Optional[int]
+    status: str
+    order_date: datetime
+    expected_ship_date: Optional[datetime]
+    notes: Optional[str]
+    created_at: datetime
+    updated_at: Optional[datetime]
+    items: List[SalesOrderItemRead]
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class FulfillSalesOrderItemRequest(BaseModel):
+    quantity: int = Field(gt=0)
+
+
+class PurchaseOrderItemCreate(BaseModel):
+    product_id: int
+    warehouse_id: Optional[int] = None
+    quantity_ordered: int = Field(gt=0)
+    unit_cost: float = 0
+
+
+class PurchaseOrderCreate(BaseModel):
+    supplier_id: Optional[int] = None
+    order_date: Optional[datetime] = None
+    expected_arrival_date: Optional[datetime] = None
+    notes: Optional[str] = None
+    items: List[PurchaseOrderItemCreate]
+
+
+class PurchaseOrderItemRead(BaseModel):
+    id: int
+    purchase_order_id: int
+    product_id: int
+    warehouse_id: Optional[int]
+    quantity_ordered: int
+    quantity_received: int
+    unit_cost: float
+    created_at: datetime
+    updated_at: Optional[datetime]
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class PurchaseOrderRead(BaseModel):
+    id: int
+    po_number: str
+    supplier_id: Optional[int]
+    status: str
+    order_date: datetime
+    expected_arrival_date: Optional[datetime]
+    notes: Optional[str]
+    created_at: datetime
+    updated_at: Optional[datetime]
+    items: List[PurchaseOrderItemRead]
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ReceivePurchaseOrderItemRequest(BaseModel):
+    quantity: int = Field(gt=0)
+
+
+class ReorderPointCreate(BaseModel):
+    product_id: int
+    warehouse_id: int
+    minimum_quantity: int = Field(ge=0)
+    reorder_quantity: int = Field(gt=0)
+
+
+class ReorderPointRead(BaseModel):
+    id: int
+    product_id: int
+    warehouse_id: int
+    minimum_quantity: int
+    reorder_quantity: int
+    created_at: datetime
+    updated_at: Optional[datetime]
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ReorderSuggestionRead(BaseModel):
+    product_id: int
+    warehouse_id: int
+    available_quantity: int
+    minimum_quantity: int
+    suggested_reorder_quantity: int
+    supplier_name: Optional[str]
+    supplier_lead_time_days: Optional[int]
+
+
+class WarehouseLocationCreate(BaseModel):
+    warehouse_id: int
+    name: str
+    code: Optional[str] = None
+    location_type: str = "STORAGE"
+    is_active: bool = True
+
+
+class WarehouseLocationRead(BaseModel):
+    id: int
+    warehouse_id: int
+    name: str
+    code: Optional[str]
+    location_type: str
+    is_active: bool
+    created_at: datetime
+    updated_at: Optional[datetime]
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class PickListItemRead(BaseModel):
+    id: int
+    pick_list_id: int
+    sales_order_item_id: int
+    product_id: int
+    warehouse_id: int
+    warehouse_location_id: Optional[int]
+    quantity_to_pick: int
+    quantity_picked: int
+    created_at: datetime
+    updated_at: Optional[datetime]
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class PickListRead(BaseModel):
+    id: int
+    sales_order_id: int
+    status: str
+    created_at: datetime
+    updated_at: Optional[datetime]
+    items: List[PickListItemRead]
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class PickItemRequest(BaseModel):
+    quantity: int = Field(gt=0)
+    warehouse_location_id: Optional[int] = None
+
+
+class PackingRecordCreate(BaseModel):
+    package_reference: Optional[str] = None
+
+
+class PackingRecordRead(BaseModel):
+    id: int
+    sales_order_id: int
+    status: str
+    package_reference: Optional[str]
+    created_at: datetime
+    updated_at: Optional[datetime]
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class CycleCountItemCreate(BaseModel):
+    product_id: int
+    warehouse_location_id: Optional[int] = None
+
+
+class CycleCountCreate(BaseModel):
+    warehouse_id: int
+    items: List[CycleCountItemCreate]
+
+
+class CycleCountItemRead(BaseModel):
+    id: int
+    cycle_count_id: int
+    product_id: int
+    warehouse_location_id: Optional[int]
+    expected_quantity: int
+    counted_quantity: Optional[int]
+    variance: Optional[int]
+    created_at: datetime
+    updated_at: Optional[datetime]
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class CycleCountRead(BaseModel):
+    id: int
+    warehouse_id: int
+    status: str
+    created_at: datetime
+    completed_at: Optional[datetime]
+    items: List[CycleCountItemRead]
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class SubmitCycleCountItemRequest(BaseModel):
+    counted_quantity: int = Field(ge=0)
+
+
+class InventoryConditionRequest(BaseModel):
+    product_id: int
+    warehouse_id: int
+    quantity: int = Field(gt=0)
+    reason: str
+
+
+class ReturnOrderItemCreate(BaseModel):
+    product_id: int
+    warehouse_id: Optional[int] = None
+    quantity: int = Field(gt=0)
+    return_reason: str
+    condition: str
+    refund_amount: float = 0
+    replacement_cost: float = 0
+    supplier_id: Optional[int] = None
+    carrier_name: Optional[str] = None
+
+
+class ReturnOrderCreate(BaseModel):
+    sales_order_id: Optional[int] = None
+    customer_id: Optional[int] = None
+    return_date: Optional[datetime] = None
+    notes: Optional[str] = None
+    items: List[ReturnOrderItemCreate]
+
+
+class ReturnOrderItemRead(BaseModel):
+    id: int
+    return_order_id: int
+    product_id: int
+    warehouse_id: Optional[int]
+    quantity: int
+    return_reason: str
+    condition: str
+    refund_amount: float
+    replacement_cost: float
+    supplier_id: Optional[int]
+    carrier_name: Optional[str]
+    created_at: datetime
+    updated_at: Optional[datetime]
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ReturnOrderRead(BaseModel):
+    id: int
+    return_number: str
+    sales_order_id: Optional[int]
+    customer_id: Optional[int]
+    status: str
+    return_date: datetime
+    refund_amount: float
+    replacement_cost: float
+    notes: Optional[str]
+    created_at: datetime
+    updated_at: Optional[datetime]
+    items: List[ReturnOrderItemRead]
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class RefundReturnOrderRequest(BaseModel):
+    refund_amount: float = 0
+
+
+class ReceiveReturnItemRequest(BaseModel):
+    quantity: int = Field(gt=0)
+
+
+class MarginAnalysisRead(BaseModel):
+    product_id: int
+    gross_profit: float
+    refund_amount: float
+    replacement_cost: float
+    return_adjusted_margin: float
+    missing_data: List[str]
+
+
+class HighReturnProductRead(BaseModel):
+    product_id: int
+    returned_quantity: int
+    refund_amount: float
+    replacement_cost: float
+
+
+class ProfitLeakageLineRead(BaseModel):
+    product_id: int
+    refund_amount: float
+    replacement_cost: float
+    total_leakage: float
+
+
+class ProfitLeakageReportRead(BaseModel):
+    start_date: datetime
+    end_date: datetime
+    total_refunds: float
+    total_replacement_cost: float
+    total_profit_leakage: float
+    by_product: List[ProfitLeakageLineRead]
+
+
+class ShipmentCreate(BaseModel):
+    related_type: Optional[str] = None
+    related_id: Optional[str] = None
+    carrier_name: Optional[str] = None
+    tracking_number: Optional[str] = None
+    origin: Optional[str] = None
+    destination: Optional[str] = None
+    estimated_arrival: Optional[datetime] = None
+    customs_status: Optional[str] = None
+    documents_url: Optional[str] = None
+
+
+class ShipmentStatusUpdateRequest(BaseModel):
+    status: str
+    actual_arrival: Optional[datetime] = None
+    delay_reason: Optional[str] = None
+    customs_status: Optional[str] = None
+
+
+class ShipmentLegCreate(BaseModel):
+    sequence_number: int = Field(gt=0)
+    origin: str
+    destination: str
+    transport_mode: str
+    carrier_name: Optional[str] = None
+    vessel_or_flight_number: Optional[str] = None
+    departure_time: Optional[datetime] = None
+    arrival_time: Optional[datetime] = None
+    status: Optional[str] = None
+
+
+class ShipmentLegRead(BaseModel):
+    id: int
+    shipment_id: int
+    sequence_number: int
+    origin: str
+    destination: str
+    transport_mode: str
+    carrier_name: Optional[str]
+    vessel_or_flight_number: Optional[str]
+    departure_time: Optional[datetime]
+    arrival_time: Optional[datetime]
+    status: Optional[str]
+    created_at: datetime
+    updated_at: Optional[datetime]
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ShipmentRead(BaseModel):
+    id: int
+    shipment_number: str
+    related_type: Optional[str]
+    related_id: Optional[str]
+    carrier_name: Optional[str]
+    tracking_number: Optional[str]
+    status: str
+    origin: Optional[str]
+    destination: Optional[str]
+    estimated_arrival: Optional[datetime]
+    actual_arrival: Optional[datetime]
+    delay_reason: Optional[str]
+    customs_status: Optional[str]
+    documents_url: Optional[str]
+    created_at: datetime
+    updated_at: Optional[datetime]
+    legs: List[ShipmentLegRead] = []
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class DelayImpactRead(BaseModel):
+    shipment_id: int
+    related_type: Optional[str]
+    related_id: Optional[str]
+    affected_order: Optional[dict]
+    affected_products: List[dict]
+    estimated_delay_days: int
+    risk_level: str
+
+
+class RouteCreate(BaseModel):
+    name: str
+    origin: str
+    destination: str
+    mode: str
+    average_transit_days: Optional[int] = None
+    risk_level: str = "MEDIUM"
+
+
+class RouteRead(BaseModel):
+    id: int
+    name: str
+    origin: str
+    destination: str
+    mode: str
+    average_transit_days: Optional[int]
+    risk_level: str
+    created_at: datetime
+    updated_at: Optional[datetime]
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class PortOrNodeCreate(BaseModel):
+    code: Optional[str] = None
+    name: str
+    country: Optional[str] = None
+    node_type: str
+
+
+class PortOrNodeRead(BaseModel):
+    id: int
+    code: Optional[str]
+    name: str
+    country: Optional[str]
+    node_type: str
+    created_at: datetime
+    updated_at: Optional[datetime]
+
+    model_config = ConfigDict(from_attributes=True)
