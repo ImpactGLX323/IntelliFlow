@@ -6,6 +6,12 @@ from app.database import get_db
 from app.models import Product, User
 from app.schemas import ProductCreate, ProductUpdate, ProductResponse
 from app.auth import get_current_user
+from app.services.stock_ledger_service import (
+    adjust_stock,
+    get_default_warehouse,
+    seed_product_stock_from_legacy_current_stock,
+    sync_product_current_stock,
+)
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -38,10 +44,19 @@ async def create_product(
             detail="Product with this SKU already exists"
         )
 
-    db_product = Product(**product.dict(), owner_id=current_user.id)
+    product_data = product.model_dump()
+    opening_stock = product_data.pop("current_stock", 0)
+    db_product = Product(**product_data, current_stock=0, owner_id=current_user.id)
     try:
         db.add(db_product)
         db.commit()
+        db.refresh(db_product)
+        seed_product_stock_from_legacy_current_stock(
+            db,
+            product=db_product,
+            quantity=opening_stock,
+            created_by=current_user.id,
+        )
         db.refresh(db_product)
         return db_product
     except Exception:
@@ -61,6 +76,8 @@ async def get_products(
     products = db.query(Product).filter(
         Product.owner_id == current_user.id
     ).offset(skip).limit(limit).all()
+    for product in products:
+        sync_product_current_stock(db, product.id)
     return products
 
 @router.get("/{product_id}", response_model=ProductResponse)
@@ -78,6 +95,7 @@ async def get_product(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Product not found"
         )
+    sync_product_current_stock(db, product.id)
     return product
 
 @router.put("/{product_id}", response_model=ProductResponse)
@@ -97,12 +115,30 @@ async def update_product(
             detail="Product not found"
         )
     
-    update_data = product_update.dict(exclude_unset=True)
+    update_data = product_update.model_dump(exclude_unset=True)
+    requested_current_stock = update_data.pop("current_stock", None)
     for field, value in update_data.items():
         setattr(product, field, value)
-    
+
     db.commit()
     db.refresh(product)
+
+    if requested_current_stock is not None:
+        sync_product_current_stock(db, product.id, commit=True)
+        current_available = product.current_stock
+        delta = requested_current_stock - current_available
+        if delta != 0:
+            default_warehouse = get_default_warehouse(db)
+            adjust_stock(
+                db,
+                product_id=product.id,
+                warehouse_id=default_warehouse.id,
+                quantity=abs(delta),
+                adjustment_type="POSITIVE" if delta > 0 else "NEGATIVE",
+                reason="Legacy product current_stock update mirrored into inventory ledger",
+                created_by=current_user.id,
+            )
+            db.refresh(product)
     return product
 
 @router.delete("/{product_id}", status_code=status.HTTP_204_NO_CONTENT)

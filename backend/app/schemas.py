@@ -1,4 +1,4 @@
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 from datetime import datetime
 from typing import Optional, List
 
@@ -14,8 +14,7 @@ class UserResponse(BaseModel):
     full_name: Optional[str]
     is_active: bool
     
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class Token(BaseModel):
     access_token: str
@@ -59,8 +58,7 @@ class ProductResponse(BaseModel):
     supplier: Optional[str]
     created_at: datetime
     
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 # Sale schemas
 class SaleCreate(BaseModel):
@@ -82,8 +80,7 @@ class SaleResponse(BaseModel):
     order_id: Optional[str]
     created_at: datetime
     
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 # Analytics schemas
 class BestSeller(BaseModel):
@@ -157,3 +154,117 @@ class IngestResponse(BaseModel):
     embedding_dimensions: int
     failed_files: List[str]
     documents: List[IngestedDocumentSummary]
+
+
+class WarehouseCreate(BaseModel):
+    name: str
+    code: str
+    address: Optional[str] = None
+    is_active: bool = True
+
+
+class WarehouseRead(BaseModel):
+    id: int
+    name: str
+    code: str
+    address: Optional[str]
+    is_active: bool
+    created_at: datetime
+    updated_at: Optional[datetime]
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class InventoryTransactionRead(BaseModel):
+    id: int
+    product_id: int
+    warehouse_id: int
+    transaction_type: str
+    quantity: int
+    direction: str
+    reference_type: Optional[str]
+    reference_id: Optional[str]
+    reason: Optional[str]
+    notes: Optional[str]
+    created_by: Optional[int]
+    approved_by: Optional[int]
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class StockReservationRead(BaseModel):
+    id: int
+    product_id: int
+    warehouse_id: int
+    quantity: int
+    status: str
+    reference_type: Optional[str]
+    reference_id: Optional[str]
+    created_at: datetime
+    updated_at: Optional[datetime]
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class StockTransferRead(BaseModel):
+    id: int
+    product_id: int
+    from_warehouse_id: int
+    to_warehouse_id: int
+    quantity: int
+    status: str
+    notes: Optional[str]
+    created_at: datetime
+    updated_at: Optional[datetime]
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class StockPositionRead(BaseModel):
+    product_id: int
+    warehouse_id: Optional[int]
+    on_hand: int
+    reserved: int
+    available: int
+    damaged: int
+    quarantined: int
+
+
+class ReceivePurchaseRequest(BaseModel):
+    product_id: int
+    warehouse_id: int
+    quantity: int = Field(gt=0)
+    reference_id: Optional[str] = None
+
+
+class StockAdjustmentRequest(BaseModel):
+    product_id: int
+    warehouse_id: int
+    quantity: int = Field(gt=0)
+    adjustment_type: str
+    reason: str
+    notes: Optional[str] = None
+
+    @field_validator("adjustment_type")
+    @classmethod
+    def validate_adjustment_type(cls, value: str) -> str:
+        if value not in {"POSITIVE", "NEGATIVE"}:
+            raise ValueError("adjustment_type must be POSITIVE or NEGATIVE")
+        return value
+
+
+class StockReservationRequest(BaseModel):
+    product_id: int
+    warehouse_id: int
+    quantity: int = Field(gt=0)
+    reference_type: Optional[str] = None
+    reference_id: Optional[str] = None
+
+
+class StockTransferRequest(BaseModel):
+    product_id: int
+    from_warehouse_id: int
+    to_warehouse_id: int
+    quantity: int = Field(gt=0)
+    notes: Optional[str] = None

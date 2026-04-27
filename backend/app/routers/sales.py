@@ -6,6 +6,12 @@ from app.database import get_db
 from app.models import Sale, Product, User, InventoryHistory
 from app.schemas import SaleCreate, SaleResponse
 from app.auth import get_current_user
+from app.services.stock_ledger_service import (
+    create_inventory_transaction,
+    get_default_warehouse,
+    get_stock_position,
+    sync_product_current_stock,
+)
 
 router = APIRouter()
 
@@ -25,42 +31,61 @@ async def create_sale(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Product not found"
         )
-    
-    # Check stock availability
-    if product.current_stock < sale.quantity:
+
+    default_warehouse = get_default_warehouse(db)
+    stock_position = get_stock_position(db, product.id, default_warehouse.id)
+
+    if stock_position["available"] < sale.quantity:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Insufficient stock. Available: {product.current_stock}, Requested: {sale.quantity}"
+            detail=(
+                f"Insufficient stock in {default_warehouse.name}. "
+                f"Available: {stock_position['available']}, Requested: {sale.quantity}"
+            ),
         )
-    
-    # Create sale
+
     total_amount = sale.quantity * sale.unit_price
     db_sale = Sale(
-        **sale.dict(),
+        **sale.model_dump(),
         total_amount=total_amount,
         owner_id=current_user.id
     )
-    db.add(db_sale)
-    
-    # Update inventory
-    previous_stock = product.current_stock
-    product.current_stock -= sale.quantity
-    new_stock = product.current_stock
-    
-    # Record inventory history
-    inventory_history = InventoryHistory(
-        product_id=product.id,
-        quantity_change=-sale.quantity,
-        previous_stock=previous_stock,
-        new_stock=new_stock,
-        change_type="sale",
-        notes=f"Sale #{db_sale.id}"
-    )
-    db.add(inventory_history)
-    
-    db.commit()
-    db.refresh(db_sale)
-    return db_sale
+
+    try:
+        db.add(db_sale)
+        db.flush()
+
+        create_inventory_transaction(
+            db,
+            product_id=product.id,
+            warehouse_id=default_warehouse.id,
+            transaction_type="SALE_SHIPPED",
+            quantity=sale.quantity,
+            direction="OUT",
+            reference_type="SALE",
+            reference_id=str(db_sale.id),
+            reason="Sale shipped via legacy sales endpoint",
+            created_by=current_user.id,
+            commit=False,
+        )
+
+        sync_product_current_stock(db, product.id)
+        inventory_history = InventoryHistory(
+            product_id=product.id,
+            quantity_change=-sale.quantity,
+            previous_stock=stock_position["available"],
+            new_stock=get_stock_position(db, product.id, default_warehouse.id)["available"],
+            change_type="sale",
+            notes=f"Sale #{db_sale.id}",
+        )
+        db.add(inventory_history)
+
+        db.commit()
+        db.refresh(db_sale)
+        return db_sale
+    except Exception:
+        db.rollback()
+        raise
 
 @router.get("/", response_model=List[SaleResponse])
 async def get_sales(
@@ -97,4 +122,3 @@ async def get_sale(
             detail="Sale not found"
         )
     return sale
-

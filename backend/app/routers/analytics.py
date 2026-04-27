@@ -9,6 +9,7 @@ from app.schemas import (
     DashboardStats, BestSeller, SalesTrend, InventoryRisk
 )
 from app.auth import get_current_user
+from app.services.stock_ledger_service import get_available
 
 router = APIRouter()
 
@@ -36,11 +37,11 @@ async def get_dashboard_stats(
         Product.owner_id == current_user.id
     ).scalar() or 0
     
-    # Low stock alerts
-    low_stock_alerts = db.query(func.count(Product.id)).filter(
-        Product.owner_id == current_user.id,
-        Product.current_stock <= Product.min_stock_threshold
-    ).scalar() or 0
+    all_products = db.query(Product).filter(Product.owner_id == current_user.id).all()
+    low_stock_alerts = sum(
+        1 for product in all_products
+        if get_available(db, product.id) <= product.min_stock_threshold
+    )
     
     # Top sellers (last 30 days)
     top_sellers_query = db.query(
@@ -148,14 +149,14 @@ async def get_inventory_risks(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
-    # Get products with low stock
-    low_stock_products = db.query(Product).filter(
-        Product.owner_id == current_user.id,
-        Product.current_stock <= Product.min_stock_threshold
-    ).all()
-    
+    low_stock_products = []
+    for product in db.query(Product).filter(Product.owner_id == current_user.id).all():
+        available_stock = get_available(db, product.id)
+        if available_stock <= product.min_stock_threshold:
+            low_stock_products.append((product, available_stock))
+
     risks = []
-    for product in low_stock_products:
+    for product, available_stock in low_stock_products:
         # Calculate days of stock based on recent sales velocity
         thirty_days_ago = datetime.utcnow() - timedelta(days=30)
         recent_sales = db.query(func.sum(Sale.quantity)).filter(
@@ -164,14 +165,14 @@ async def get_inventory_risks(
         ).scalar() or 0
         
         daily_velocity = recent_sales / 30.0 if recent_sales > 0 else 0
-        days_of_stock = (product.current_stock / daily_velocity) if daily_velocity > 0 else None
+        days_of_stock = (available_stock / daily_velocity) if daily_velocity > 0 else None
         
         # Determine risk level
-        if product.current_stock == 0:
+        if available_stock == 0:
             risk_level = "critical"
-        elif product.current_stock < (product.min_stock_threshold * 0.5):
+        elif available_stock < (product.min_stock_threshold * 0.5):
             risk_level = "high"
-        elif product.current_stock < product.min_stock_threshold:
+        elif available_stock < product.min_stock_threshold:
             risk_level = "medium"
         else:
             risk_level = "low"
@@ -179,7 +180,7 @@ async def get_inventory_risks(
         risks.append(InventoryRisk(
             product_id=product.id,
             product_name=product.name,
-            current_stock=product.current_stock,
+            current_stock=available_stock,
             min_threshold=product.min_stock_threshold,
             days_of_stock=days_of_stock,
             risk_level=risk_level
@@ -190,4 +191,3 @@ async def get_inventory_risks(
     risks.sort(key=lambda x: risk_order.get(x.risk_level, 4))
     
     return risks
-

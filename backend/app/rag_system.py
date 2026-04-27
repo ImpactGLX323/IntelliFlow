@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.models import Product, RiskAlert, Sale
 from app.schemas import RoadmapTask
+from app.services.stock_ledger_service import get_stock_position
 
 
 class RAGSystem:
@@ -22,19 +23,23 @@ class RAGSystem:
         context_parts: list[str] = []
 
         products = db.query(Product).filter(Product.owner_id == user_id).all()
-        product_data = [
-            {
-                "name": product.name,
-                "sku": product.sku,
-                "category": product.category,
-                "price": product.price,
-                "cost": product.cost,
-                "stock": product.current_stock,
-                "threshold": product.min_stock_threshold,
-                "supplier": product.supplier,
-            }
-            for product in products
-        ]
+        product_data = []
+        for product in products:
+            stock_position = get_stock_position(db, product.id)
+            product_data.append(
+                {
+                    "name": product.name,
+                    "sku": product.sku,
+                    "category": product.category,
+                    "price": product.price,
+                    "cost": product.cost,
+                    "stock": stock_position["available"],
+                    "on_hand": stock_position["on_hand"],
+                    "reserved": stock_position["reserved"],
+                    "threshold": product.min_stock_threshold,
+                    "supplier": product.supplier,
+                }
+            )
         context_parts.append(f"Products: {json.dumps(product_data, indent=2)}")
 
         thirty_days_ago = datetime.utcnow() - timedelta(days=30)

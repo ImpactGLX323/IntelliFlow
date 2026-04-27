@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.routers import auth, products, sales, analytics, ai_copilot, ingestion
+from app.routers import auth, products, sales, analytics, ai_copilot, ingestion, inventory
 from app.database import engine, Base
 from app.firebase_admin import init_firebase_admin
 
@@ -33,6 +33,7 @@ app.include_router(products.router, prefix="/api/products", tags=["products"])
 app.include_router(sales.router, prefix="/api/sales", tags=["sales"])
 app.include_router(analytics.router, prefix="/api/analytics", tags=["analytics"])
 app.include_router(ai_copilot.router, prefix="/api/ai", tags=["ai"])
+app.include_router(inventory.router, prefix="/api", tags=["inventory"])
 app.include_router(ingestion.router, tags=["ingestion"])
 
 @app.get("/")
