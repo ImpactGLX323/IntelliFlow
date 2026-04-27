@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from app.mcp import InternalMCPServer
 from app.routers import (
     ai_copilot,
     analytics,
@@ -24,6 +25,7 @@ from app.firebase_admin import init_firebase_admin
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="IntelliFlow API", version="1.0.0")
+app.state.internal_mcp = InternalMCPServer()
 
 @app.on_event("startup")
 def startup_firebase():

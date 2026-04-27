@@ -4,7 +4,7 @@ from app.database import get_db
 from app.models import User
 from app.schemas import RoadmapRequest, RoadmapResponse
 from app.auth import get_current_user
-from app.rag_system import rag_system
+from app.services import rag_service
 
 router = APIRouter()
 
@@ -15,11 +15,7 @@ async def generate_roadmap(
     current_user: User = Depends(get_current_user)
 ):
     try:
-        roadmap = rag_system.generate_roadmap(
-            query=request.query,
-            db=db,
-            user_id=current_user.id
-        )
+        roadmap = rag_service.generate_roadmap(db=db, user_id=current_user.id, query=request.query)
         return RoadmapResponse(**roadmap)
     except Exception as e:
         raise HTTPException(
@@ -35,11 +31,7 @@ async def get_insights(
     """Get quick AI insights about the business"""
     query = "Provide 3-5 key insights about my business performance, inventory status, and sales trends. Be concise and actionable."
     try:
-        roadmap = rag_system.generate_roadmap(
-            query=query,
-            db=db,
-            user_id=current_user.id
-        )
+        roadmap = rag_service.generate_roadmap(db=db, user_id=current_user.id, query=query)
         return {
             "insights": roadmap.get("insights", []),
             "summary": roadmap.get("summary", "")
@@ -49,4 +41,3 @@ async def get_insights(
             status_code=500,
             detail=f"Error generating insights: {str(e)}"
         )
-
