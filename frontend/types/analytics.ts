@@ -21,3 +21,12 @@ export interface DashboardStats {
   top_sellers: DashboardTopSeller[]
   recent_trends: DashboardTrend[]
 }
+
+export interface InventoryRisk {
+  product_id: number
+  product_name: string
+  current_stock: number
+  min_threshold: number
+  days_of_stock: number | null
+  risk_level: string
+}

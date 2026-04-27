@@ -2,7 +2,9 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { productsAPI, salesAPI } from '@/lib/api'
+import PlanAccessNotice from '@/components/ui/PlanAccessNotice'
+import { copilotAPI, productsAPI, salesAPI } from '@/lib/api'
+import type { AICapabilities, CopilotQueryResponse } from '@/types/copilot'
 import type { Product } from '@/types/product'
 import type { Sale } from '@/types/sales'
 
@@ -27,6 +29,8 @@ const initialForm: SalesFormState = {
 export default function SalesPage() {
   const [sales, setSales] = useState<Sale[]>([])
   const [products, setProducts] = useState<Product[]>([])
+  const [capabilities, setCapabilities] = useState<AICapabilities | null>(null)
+  const [salesInsight, setSalesInsight] = useState<CopilotQueryResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
   const [formData, setFormData] = useState<SalesFormState>(initialForm)
@@ -34,6 +38,7 @@ export default function SalesPage() {
   useEffect(() => {
     loadSales()
     loadProducts()
+    loadSalesInsights()
   }, [])
 
   const loadSales = async () => {
@@ -53,6 +58,19 @@ export default function SalesPage() {
       setProducts(response.data)
     } catch (error) {
       console.error('Failed to load products:', error)
+    }
+  }
+
+  const loadSalesInsights = async () => {
+    try {
+      const capabilityResponse = await copilotAPI.getCapabilities()
+      setCapabilities(capabilityResponse.data)
+      if (capabilityResponse.data.features.sales_insights) {
+        const response = await copilotAPI.query('What are my best-selling products this week?')
+        setSalesInsight(response.data)
+      }
+    } catch (error) {
+      console.error('Failed to load sales insights:', error)
     }
   }
 
@@ -93,6 +111,37 @@ export default function SalesPage() {
 
   return (
     <div className="space-y-6 overflow-x-hidden">
+      <section className="grid min-w-0 gap-6 xl:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)]">
+        <div className="min-w-0 rounded-[1.5rem] border border-white/12 bg-white/[0.04] p-5 backdrop-blur-sm sm:rounded-[2rem] sm:p-7">
+          <p className="font-montserrat text-xs font-semibold uppercase tracking-[0.28em] text-[#ff9b3d]/75">
+            Sales Insights
+          </p>
+          <h2 className="font-montserrat mt-4 text-[clamp(1.8rem,5vw,2.6rem)] font-semibold leading-[0.98] tracking-[-0.04em] text-white text-balance">
+            Performance context for the commercial ledger.
+          </h2>
+          <p className="font-lexend mt-5 max-w-2xl text-sm leading-8 text-[#c1ccd8] sm:text-base">
+            Free workspaces can record sales. Pro and Boost unlock AI-ranked best sellers, velocity change detection, and anomaly visibility.
+          </p>
+        </div>
+
+        <div className="min-w-0 rounded-[1.5rem] border border-white/12 bg-white/[0.04] p-5 backdrop-blur-sm sm:rounded-[2rem] sm:p-6">
+          {capabilities?.features.sales_insights ? (
+            <>
+              <p className="font-montserrat text-[11px] uppercase tracking-[0.18em] text-white/40">This week&apos;s best sellers</p>
+              <pre className="mt-4 overflow-x-auto rounded-2xl bg-white/[0.04] p-4 text-xs text-white/72">
+                {JSON.stringify(salesInsight?.result ?? {}, null, 2)}
+              </pre>
+            </>
+          ) : (
+            <PlanAccessNotice
+              requiredPlan="PRO"
+              title="Sales insights are available on Pro."
+              body="Backend-enforced MCP sales analytics stay locked on Free, even if the frontend route is accessible."
+            />
+          )}
+        </div>
+      </section>
+
       <section className="grid min-w-0 gap-6 xl:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)]">
         <div className="min-w-0 rounded-[1.5rem] border border-white/12 bg-white/[0.04] p-5 backdrop-blur-sm sm:rounded-[2rem] sm:p-7">
           <p className="font-montserrat text-xs font-semibold uppercase tracking-[0.28em] text-[#8ea2ba]">

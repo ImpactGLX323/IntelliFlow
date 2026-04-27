@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from app.jobs.scheduler import build_default_scheduler, should_enable_scheduler
 from app.mcp import InternalMCPServer
 from app.routers import (
     ai_copilot,
@@ -26,10 +27,18 @@ Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="IntelliFlow API", version="1.0.0")
 app.state.internal_mcp = InternalMCPServer()
+app.state.agent_scheduler = build_default_scheduler(app.state.internal_mcp)
 
 @app.on_event("startup")
 def startup_firebase():
     init_firebase_admin()
+    if should_enable_scheduler():
+        app.state.agent_scheduler.start()
+
+
+@app.on_event("shutdown")
+def shutdown_scheduler():
+    app.state.agent_scheduler.stop()
 
 # CORS middleware
 app.add_middleware(

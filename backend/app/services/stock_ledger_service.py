@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime, timedelta
 from typing import Optional
 
 from fastapi import HTTPException, status
@@ -9,6 +10,7 @@ from sqlalchemy.orm import Session
 from app.models import (
     InventoryTransaction,
     Product,
+    Sale,
     StockReservation,
     StockTransfer,
     Warehouse,
@@ -37,6 +39,13 @@ INVENTORY_DIRECTIONS = {"IN", "OUT", "RESERVE", "RELEASE", "NEUTRAL"}
 RESERVATION_ACTIVE_STATUSES = {"ACTIVE"}
 RESERVATION_OPEN_STATUSES = {"ACTIVE", "RELEASED", "CONSUMED", "CANCELLED"}
 TRANSFER_STATUSES = {"DRAFT", "IN_TRANSIT", "RECEIVED", "CANCELLED"}
+
+
+def _get_product_by_sku(db: Session, sku: str) -> Product:
+    product = db.query(Product).filter(Product.sku == sku).first()
+    if product is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Product not found")
+    return product
 
 
 def _apply_inventory_filters(query, product_id: int, warehouse_id: Optional[int] = None):
@@ -148,6 +157,242 @@ def get_stock_position(db: Session, product_id: int, warehouse_id: Optional[int]
         "available": on_hand - reserved - damaged - quarantined,
         "damaged": damaged,
         "quarantined": quarantined,
+    }
+
+
+def get_stock_position_by_sku(db: Session, sku: str, warehouse_id: Optional[int] = None) -> dict:
+    product = _get_product_by_sku(db, sku)
+    stock_position = get_stock_position(db, product.id, warehouse_id)
+    stock_position["sku"] = product.sku
+    stock_position["product_name"] = product.name
+    return stock_position
+
+
+def get_available_to_promise(db: Session, product_id: int, warehouse_id: Optional[int] = None) -> dict:
+    stock_position = get_stock_position(db, product_id, warehouse_id)
+    stock_position["available_to_promise"] = stock_position["available"]
+    return stock_position
+
+
+def get_low_stock_items(db: Session, warehouse_id: Optional[int] = None) -> list[dict]:
+    low_stock_items: list[dict] = []
+    for product in db.query(Product).order_by(Product.name.asc()).all():
+        stock_position = get_stock_position(db, product.id, warehouse_id)
+        threshold = product.min_stock_threshold or 0
+        if stock_position["available"] <= threshold:
+            low_stock_items.append(
+                {
+                    **stock_position,
+                    "sku": product.sku,
+                    "product_name": product.name,
+                    "min_stock_threshold": threshold,
+                    "recommendation": {
+                        "action": "REPLENISH",
+                        "reason": "Available stock is at or below minimum threshold",
+                    },
+                }
+            )
+    return low_stock_items
+
+
+def get_stock_movements_by_sku(
+    db: Session,
+    sku: str,
+    warehouse_id: Optional[int] = None,
+    limit: int = 100,
+) -> dict:
+    product = _get_product_by_sku(db, sku)
+    query = db.query(InventoryTransaction).filter(InventoryTransaction.product_id == product.id)
+    if warehouse_id is not None:
+        query = query.filter(InventoryTransaction.warehouse_id == warehouse_id)
+    movements = (
+        query.order_by(InventoryTransaction.created_at.desc(), InventoryTransaction.id.desc())
+        .limit(limit)
+        .all()
+    )
+    stock_position = get_stock_position(db, product.id, warehouse_id)
+    return {
+        **stock_position,
+        "sku": product.sku,
+        "product_name": product.name,
+        "movements": [
+            {
+                "id": movement.id,
+                "warehouse_id": movement.warehouse_id,
+                "transaction_type": movement.transaction_type,
+                "direction": movement.direction,
+                "quantity": movement.quantity,
+                "reference_type": movement.reference_type,
+                "reference_id": movement.reference_id,
+                "reason": movement.reason,
+                "notes": movement.notes,
+                "created_at": movement.created_at.isoformat() if movement.created_at else None,
+            }
+            for movement in movements
+        ],
+    }
+
+
+def calculate_days_of_cover(
+    db: Session,
+    product_id: int,
+    warehouse_id: Optional[int] = None,
+    lookback_days: int = 30,
+) -> dict:
+    if lookback_days <= 0:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="lookback_days must be greater than zero")
+    product = db.query(Product).filter(Product.id == product_id).first()
+    if product is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Product not found")
+
+    start_date = datetime.utcnow() - timedelta(days=lookback_days)
+    recent_sales_quantity = (
+        db.query(func.coalesce(func.sum(Sale.quantity), 0))
+        .filter(Sale.product_id == product_id, Sale.sale_date >= start_date)
+        .scalar()
+        or 0
+    )
+    average_daily_demand = float(recent_sales_quantity) / lookback_days if lookback_days else 0.0
+    stock_position = get_stock_position(db, product_id, warehouse_id)
+    days_of_cover = None if average_daily_demand <= 0 else stock_position["available"] / average_daily_demand
+    recommendation = {
+        "action": "REVIEW_REPLENISHMENT" if days_of_cover is not None and days_of_cover < 14 else "MONITOR",
+        "reason": "Days of cover is below two weeks" if days_of_cover is not None and days_of_cover < 14 else "Coverage is within acceptable range or demand is insufficient to calculate",
+    }
+    return {
+        **stock_position,
+        "sku": product.sku,
+        "product_name": product.name,
+        "lookback_days": lookback_days,
+        "recent_sales_quantity": int(recent_sales_quantity),
+        "average_daily_demand": average_daily_demand,
+        "days_of_cover": days_of_cover,
+        "recommendation": recommendation,
+    }
+
+
+def recommend_stock_transfer(db: Session, product_id: int, target_warehouse_id: int) -> dict:
+    product = db.query(Product).filter(Product.id == product_id).first()
+    if product is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Product not found")
+    target_warehouse = db.query(Warehouse).filter(Warehouse.id == target_warehouse_id).first()
+    if target_warehouse is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Warehouse not found")
+
+    target_position = get_stock_position(db, product_id, target_warehouse_id)
+    threshold = product.min_stock_threshold or 0
+    deficit = max(threshold - target_position["available"], 0)
+
+    candidate_sources: list[dict] = []
+    for warehouse in db.query(Warehouse).filter(Warehouse.id != target_warehouse_id, Warehouse.is_active.is_(True)).all():
+        source_position = get_stock_position(db, product_id, warehouse.id)
+        excess = max(source_position["available"] - threshold, 0)
+        if excess <= 0:
+            continue
+        recommended_quantity = min(excess, deficit) if deficit > 0 else excess
+        candidate_sources.append(
+            {
+                **source_position,
+                "warehouse_name": warehouse.name,
+                "transferable_quantity": excess,
+                "recommended_quantity": recommended_quantity,
+            }
+        )
+
+    candidate_sources.sort(key=lambda item: item["recommended_quantity"], reverse=True)
+    best_source = candidate_sources[0] if candidate_sources else None
+    return {
+        "product_id": product.id,
+        "sku": product.sku,
+        "target_warehouse_id": target_warehouse_id,
+        "target_position": target_position,
+        "recommendation": {
+            "action": "TRANSFER" if best_source and deficit > 0 else "NONE",
+            "reason": "Target warehouse is below threshold" if deficit > 0 else "Target warehouse is sufficiently stocked",
+            "recommended_source_warehouse_id": best_source["warehouse_id"] if best_source else None,
+            "recommended_quantity": best_source["recommended_quantity"] if best_source else 0,
+            "target_deficit": deficit,
+            "candidate_sources": candidate_sources,
+        },
+    }
+
+
+def create_stock_adjustment_request(
+    db: Session,
+    *,
+    product_id: int,
+    warehouse_id: int,
+    quantity: int,
+    adjustment_type: str,
+    reason: str,
+    requested_by: Optional[int] = None,
+    notes: Optional[str] = None,
+) -> dict:
+    if quantity <= 0:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Quantity must be greater than zero")
+    _validate_product_and_warehouse(db, product_id, warehouse_id)
+    if adjustment_type not in {"POSITIVE", "NEGATIVE"}:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid adjustment_type")
+
+    position = get_stock_position(db, product_id, warehouse_id)
+    return {
+        "request_type": "STOCK_ADJUSTMENT",
+        "status": "PENDING_REVIEW",
+        "product_id": product_id,
+        "warehouse_id": warehouse_id,
+        "on_hand": position["on_hand"],
+        "reserved": position["reserved"],
+        "available": position["available"],
+        "damaged": position["damaged"],
+        "quarantined": position["quarantined"],
+        "adjustment_type": adjustment_type,
+        "quantity": quantity,
+        "reason": reason,
+        "notes": notes,
+        "requested_by": requested_by,
+        "request_reference": f"adjreq-{product_id}-{warehouse_id}-{quantity}-{adjustment_type.lower()}",
+        "mutated_stock": False,
+    }
+
+
+def create_transfer_request(
+    db: Session,
+    *,
+    product_id: int,
+    from_warehouse_id: int,
+    to_warehouse_id: int,
+    quantity: int,
+    requested_by: Optional[int] = None,
+    notes: Optional[str] = None,
+) -> dict:
+    if quantity <= 0:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Quantity must be greater than zero")
+    _validate_product_and_warehouse(db, product_id, from_warehouse_id)
+    _validate_product_and_warehouse(db, product_id, to_warehouse_id)
+    if from_warehouse_id == to_warehouse_id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Source and destination warehouses must differ")
+
+    source_position = get_stock_position(db, product_id, from_warehouse_id)
+    destination_position = get_stock_position(db, product_id, to_warehouse_id)
+    if source_position["available"] < quantity:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Insufficient available stock in source warehouse. Available: {source_position['available']}, Requested: {quantity}",
+        )
+
+    return {
+        "request_type": "STOCK_TRANSFER",
+        "status": "PENDING_REVIEW",
+        "product_id": product_id,
+        "from_warehouse_id": from_warehouse_id,
+        "to_warehouse_id": to_warehouse_id,
+        "quantity": quantity,
+        "requested_by": requested_by,
+        "notes": notes,
+        "source_position": source_position,
+        "destination_position": destination_position,
+        "request_reference": f"xferreq-{product_id}-{from_warehouse_id}-{to_warehouse_id}-{quantity}",
+        "mutated_stock": False,
     }
 
 

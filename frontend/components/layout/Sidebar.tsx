@@ -20,6 +20,9 @@ const secondaryNavigation = [
   { href: '/manufacturing/boms', label: 'BOMs' },
   { href: '/manufacturing/orders', label: 'Manufacturing' },
   { href: '/alerts', label: 'Alerts' },
+  { href: '/recommendations', label: 'Recommendations' },
+  { href: '/logistics', label: 'Logistics' },
+  { href: '/compliance', label: 'Compliance' },
   { href: '/copilot', label: 'Copilot' },
 ]
 

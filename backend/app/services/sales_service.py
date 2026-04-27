@@ -6,7 +6,7 @@ from typing import Optional
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session, joinedload
 
-from app.models import Product, SalesOrder, SalesOrderItem, StockReservation, Warehouse
+from app.models import Product, Sale, SalesOrder, SalesOrderItem, StockReservation, Warehouse
 from app.services.stock_ledger_service import create_inventory_transaction, reserve_stock, sync_product_current_stock
 
 SALES_ORDER_STATUSES = {
@@ -253,3 +253,27 @@ def list_sales_orders(db: Session, status_filter: Optional[str] = None) -> list[
     if status_filter:
         query = query.filter(SalesOrder.status == status_filter)
     return query.all()
+
+
+def get_product_by_sku(db: Session, sku: str) -> Product:
+    product = db.query(Product).filter(Product.sku == sku).first()
+    if product is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Product not found")
+    return product
+
+
+def list_sales(
+    db: Session,
+    *,
+    product_id: Optional[int] = None,
+    start_date: Optional[datetime] = None,
+    end_date: Optional[datetime] = None,
+) -> list[Sale]:
+    query = db.query(Sale)
+    if product_id is not None:
+        query = query.filter(Sale.product_id == product_id)
+    if start_date is not None:
+        query = query.filter(Sale.sale_date >= start_date)
+    if end_date is not None:
+        query = query.filter(Sale.sale_date <= end_date)
+    return query.order_by(Sale.sale_date.desc(), Sale.id.desc()).all()

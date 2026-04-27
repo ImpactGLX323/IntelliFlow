@@ -1,11 +1,27 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from collections import defaultdict
+from datetime import datetime, timedelta, timezone
+from typing import Optional
 
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session, joinedload
 
-from app.models import PortOrNode, PurchaseOrder, PurchaseOrderItem, Route, SalesOrder, SalesOrderItem, Shipment, ShipmentLeg, StockTransfer
+from app.models import (
+    PortOrNode,
+    Product,
+    PurchaseOrder,
+    PurchaseOrderItem,
+    Route,
+    Sale,
+    SalesOrder,
+    SalesOrderItem,
+    Shipment,
+    ShipmentLeg,
+    StockTransfer,
+)
+from app.services import purchasing_service, sales_service
+from app.services.stock_ledger_service import get_available
 
 
 def _generate_shipment_number(db: Session) -> str:
@@ -13,8 +29,139 @@ def _generate_shipment_number(db: Session) -> str:
     return f"SHP-{datetime.utcnow().strftime('%Y%m%d')}-{count:04d}"
 
 
+def _normalize_dt(value: Optional[datetime]) -> Optional[datetime]:
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value
+
+
+def _estimate_inventory_cover_days(db: Session, product_id: int) -> Optional[float]:
+    end_date = datetime.utcnow()
+    start_date = end_date - timedelta(days=30)
+    sales = (
+        db.query(Sale)
+        .filter(Sale.product_id == product_id, Sale.sale_date >= start_date, Sale.sale_date <= end_date)
+        .all()
+    )
+    units_sold = sum(sale.quantity for sale in sales)
+    average_daily_demand = units_sold / 30.0 if units_sold > 0 else 0.0
+    if average_daily_demand <= 0:
+        return None
+    available = get_available(db, product_id)
+    return available / average_daily_demand
+
+
+def _product_summary(db: Session, product_id: int, quantity: int) -> dict:
+    product = db.query(Product).filter(Product.id == product_id).first()
+    cover_days = _estimate_inventory_cover_days(db, product_id)
+    return {
+        "product_id": product_id,
+        "sku": product.sku if product else None,
+        "product_name": product.name if product else None,
+        "quantity": quantity,
+        "inventory_cover_remaining_days": cover_days,
+        "available_stock": get_available(db, product_id),
+    }
+
+
+def _resolve_related_context(db: Session, shipment: Shipment) -> dict:
+    affected_purchase_orders: list[dict] = []
+    affected_sales_orders: list[dict] = []
+    affected_products: list[dict] = []
+    revenue_at_risk = None
+
+    if shipment.related_type == "PURCHASE_ORDER" and shipment.related_id:
+        purchase_order = purchasing_service.get_purchase_order(db, int(shipment.related_id))
+        affected_purchase_orders.append(
+            {
+                "id": purchase_order.id,
+                "po_number": purchase_order.po_number,
+                "status": purchase_order.status,
+                "expected_arrival_date": purchase_order.expected_arrival_date.isoformat() if purchase_order.expected_arrival_date else None,
+            }
+        )
+        for item in purchase_order.items:
+            remaining = max(item.quantity_ordered - item.quantity_received, 0)
+            affected_products.append(_product_summary(db, item.product_id, remaining))
+
+    elif shipment.related_type == "SALES_ORDER" and shipment.related_id:
+        sales_order = sales_service.get_sales_order(db, int(shipment.related_id))
+        affected_sales_orders.append(
+            {
+                "id": sales_order.id,
+                "order_number": sales_order.order_number,
+                "status": sales_order.status,
+                "expected_ship_date": sales_order.expected_ship_date.isoformat() if sales_order.expected_ship_date else None,
+            }
+        )
+        revenue_at_risk = 0.0
+        for item in sales_order.items:
+            outstanding = max(item.quantity_ordered - item.quantity_fulfilled, 0)
+            affected_products.append(_product_summary(db, item.product_id, outstanding))
+            revenue_at_risk += outstanding * item.unit_price
+
+    elif shipment.related_type == "TRANSFER" and shipment.related_id:
+        transfer = db.query(StockTransfer).filter(StockTransfer.id == int(shipment.related_id)).first()
+        if transfer:
+            affected_products.append(_product_summary(db, transfer.product_id, transfer.quantity))
+
+    return {
+        "affected_purchase_orders": affected_purchase_orders,
+        "affected_sales_orders": affected_sales_orders,
+        "affected_products": affected_products,
+        "revenue_at_risk": revenue_at_risk,
+    }
+
+
+def _estimate_delay_days(shipment: Shipment) -> int:
+    now = datetime.now(timezone.utc)
+    estimated_arrival = _normalize_dt(shipment.estimated_arrival)
+    actual_arrival = _normalize_dt(shipment.actual_arrival)
+    if estimated_arrival and actual_arrival:
+        return max((actual_arrival - estimated_arrival).days, 0)
+    if estimated_arrival and shipment.status in {"DELAYED", "CUSTOMS_HOLD"}:
+        return max((now - estimated_arrival).days, 0)
+    return 0
+
+
+def _is_international(shipment: Shipment) -> bool:
+    if shipment.customs_status:
+        return True
+    if shipment.origin and shipment.destination and shipment.origin != shipment.destination:
+        return True
+    return False
+
+
+def _route_shipments(db: Session, route: Route) -> list[Shipment]:
+    return (
+        db.query(Shipment)
+        .options(joinedload(Shipment.legs))
+        .filter(Shipment.origin == route.origin, Shipment.destination == route.destination)
+        .all()
+    )
+
+
+def _build_mitigation(delay_days: int, affected_products: list[dict], revenue_at_risk: Optional[float]) -> list[str]:
+    actions: list[str] = []
+    if delay_days >= 7:
+        actions.append("Escalate with carrier and review alternate route or mode immediately.")
+    elif delay_days >= 3:
+        actions.append("Notify operations and review whether existing inventory cover is sufficient.")
+    else:
+        actions.append("Monitor shipment closely and prepare customer or receiving updates.")
+
+    if any(product["inventory_cover_remaining_days"] is not None and product["inventory_cover_remaining_days"] < delay_days for product in affected_products):
+        actions.append("Inventory cover is below projected delay for at least one SKU; prioritize internal reallocation or substitute sourcing.")
+    if revenue_at_risk and revenue_at_risk > 0:
+        actions.append("Revenue is exposed on delayed outbound demand; proactively flag affected sales orders.")
+    return actions
+
+
 def create_shipment(db: Session, **payload) -> Shipment:
     # TODO: gate advanced logistics features by subscription tier once feature flags exist.
+    # TODO: when carrier APIs are configured, enrich shipment creation with upstream references here.
     shipment = Shipment(shipment_number=_generate_shipment_number(db), status="CREATED", **payload)
     db.add(shipment)
     db.commit()
@@ -75,6 +222,11 @@ def get_active_shipments(db: Session) -> list[Shipment]:
     )
 
 
+def get_international_active_shipments(db: Session) -> list[dict]:
+    shipments = get_active_shipments(db)
+    return [serialize_shipment_status(db, shipment.id) for shipment in shipments if _is_international(shipment)]
+
+
 def get_delayed_shipments(db: Session) -> list[Shipment]:
     return (
         db.query(Shipment)
@@ -85,56 +237,225 @@ def get_delayed_shipments(db: Session) -> list[Shipment]:
     )
 
 
+def get_eta(db: Session, shipment_id: int) -> dict:
+    shipment = get_shipment(db, shipment_id)
+    estimated_arrival = _normalize_dt(shipment.estimated_arrival)
+    actual_arrival = _normalize_dt(shipment.actual_arrival)
+    delay_days = _estimate_delay_days(shipment)
+    eta_status = "UNKNOWN"
+    if actual_arrival:
+        eta_status = "ARRIVED"
+    elif estimated_arrival:
+        eta_status = "LATE" if delay_days > 0 else "ON_TRACK"
+    return {
+        "shipment_id": shipment.id,
+        "shipment_number": shipment.shipment_number,
+        "estimated_arrival": estimated_arrival.isoformat() if estimated_arrival else None,
+        "actual_arrival": actual_arrival.isoformat() if actual_arrival else None,
+        "delay_days": delay_days,
+        "eta_status": eta_status,
+    }
+
+
+def find_affected_orders(db: Session, shipment_id: int) -> dict:
+    shipment = get_shipment(db, shipment_id)
+    related = _resolve_related_context(db, shipment)
+    return {
+        "shipment_id": shipment.id,
+        "shipment_number": shipment.shipment_number,
+        "affected_purchase_orders": related["affected_purchase_orders"],
+        "affected_sales_orders": related["affected_sales_orders"],
+        "affected_products": related["affected_products"],
+        "revenue_at_risk": related["revenue_at_risk"],
+    }
+
+
 def calculate_delay_impact(db: Session, shipment_id: int) -> dict:
     shipment = get_shipment(db, shipment_id)
-    now = datetime.now(timezone.utc)
-    estimated_arrival = shipment.estimated_arrival
-    actual_arrival = shipment.actual_arrival
-    if estimated_arrival is not None and estimated_arrival.tzinfo is None:
-        estimated_arrival = estimated_arrival.replace(tzinfo=timezone.utc)
-    if actual_arrival is not None and actual_arrival.tzinfo is None:
-        actual_arrival = actual_arrival.replace(tzinfo=timezone.utc)
-    estimated_delay_days = 0
-    if estimated_arrival and actual_arrival:
-        estimated_delay_days = max((actual_arrival - estimated_arrival).days, 0)
-    elif estimated_arrival and shipment.status in {"DELAYED", "CUSTOMS_HOLD"}:
-        estimated_delay_days = max((now - estimated_arrival).days, 0)
-
-    affected_order = None
-    affected_products: list[dict] = []
-
-    if shipment.related_type == "PURCHASE_ORDER" and shipment.related_id:
-        purchase_order = db.query(PurchaseOrder).filter(PurchaseOrder.id == int(shipment.related_id)).first()
-        if purchase_order:
-            affected_order = {"id": purchase_order.id, "po_number": purchase_order.po_number, "status": purchase_order.status}
-            items = db.query(PurchaseOrderItem).filter(PurchaseOrderItem.purchase_order_id == purchase_order.id).all()
-            affected_products = [{"product_id": item.product_id, "quantity": item.quantity_ordered} for item in items]
-    elif shipment.related_type == "SALES_ORDER" and shipment.related_id:
-        sales_order = db.query(SalesOrder).filter(SalesOrder.id == int(shipment.related_id)).first()
-        if sales_order:
-            affected_order = {"id": sales_order.id, "order_number": sales_order.order_number, "status": sales_order.status}
-            items = db.query(SalesOrderItem).filter(SalesOrderItem.sales_order_id == sales_order.id).all()
-            affected_products = [{"product_id": item.product_id, "quantity": item.quantity_ordered} for item in items]
-    elif shipment.related_type == "TRANSFER" and shipment.related_id:
-        transfer = db.query(StockTransfer).filter(StockTransfer.id == int(shipment.related_id)).first()
-        if transfer:
-            affected_order = {"id": transfer.id, "status": transfer.status}
-            affected_products = [{"product_id": transfer.product_id, "quantity": transfer.quantity}]
-
+    delay_days = _estimate_delay_days(shipment)
+    related = _resolve_related_context(db, shipment)
     risk_level = "LOW"
-    if estimated_delay_days >= 7 or shipment.status == "CUSTOMS_HOLD":
+    if delay_days >= 7 or shipment.status == "CUSTOMS_HOLD":
         risk_level = "HIGH"
-    elif estimated_delay_days >= 3 or shipment.status == "DELAYED":
+    elif delay_days >= 3 or shipment.status == "DELAYED":
         risk_level = "MEDIUM"
+
+    recommended_mitigation = _build_mitigation(delay_days, related["affected_products"], related["revenue_at_risk"])
 
     return {
         "shipment_id": shipment.id,
+        "shipment_number": shipment.shipment_number,
         "related_type": shipment.related_type,
         "related_id": shipment.related_id,
-        "affected_order": affected_order,
-        "affected_products": affected_products,
-        "estimated_delay_days": estimated_delay_days,
+        "delayed_shipment": shipment.status in {"DELAYED", "CUSTOMS_HOLD"},
+        "delay_days": delay_days,
+        "affected_skus": related["affected_products"],
+        "affected_purchase_orders": related["affected_purchase_orders"],
+        "affected_sales_orders": related["affected_sales_orders"],
+        "revenue_at_risk": related["revenue_at_risk"],
+        "inventory_cover_remaining": [
+            {
+                "product_id": item["product_id"],
+                "sku": item["sku"],
+                "inventory_cover_remaining_days": item["inventory_cover_remaining_days"],
+            }
+            for item in related["affected_products"]
+        ],
         "risk_level": risk_level,
+        "recommended_mitigation": recommended_mitigation,
+    }
+
+
+def detect_late_shipments(db: Session, threshold_days: int = 1) -> list[dict]:
+    delayed: list[dict] = []
+    for shipment in get_active_shipments(db):
+        delay_days = _estimate_delay_days(shipment)
+        if delay_days >= threshold_days:
+            delayed.append(serialize_shipment_status(db, shipment.id))
+    delayed.sort(key=lambda item: item["delay_days"], reverse=True)
+    return delayed
+
+
+def get_route(db: Session, route_id: int) -> Route:
+    route = db.query(Route).filter(Route.id == route_id).first()
+    if route is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Route not found")
+    return route
+
+
+def get_route_status(db: Session, route_id: int) -> dict:
+    route = get_route(db, route_id)
+    shipments = _route_shipments(db, route)
+    active_shipments = [shipment for shipment in shipments if shipment.status in {"CREATED", "IN_TRANSIT", "DELAYED", "CUSTOMS_HOLD"}]
+    delayed_shipments = [shipment for shipment in active_shipments if _estimate_delay_days(shipment) > 0 or shipment.status in {"DELAYED", "CUSTOMS_HOLD"}]
+    average_delay = None
+    if delayed_shipments:
+        average_delay = sum(_estimate_delay_days(shipment) for shipment in delayed_shipments) / len(delayed_shipments)
+    return {
+        "route_id": route.id,
+        "name": route.name,
+        "origin": route.origin,
+        "destination": route.destination,
+        "mode": route.mode,
+        "risk_level": route.risk_level,
+        "average_transit_days": route.average_transit_days,
+        "active_shipments": len(active_shipments),
+        "delayed_shipments": len(delayed_shipments),
+        "average_delay_days": average_delay,
+        "status": "DISRUPTED" if delayed_shipments else "NORMAL",
+        "missing_data": ["carrier_api_not_configured"],
+    }
+
+
+def get_route_delays(db: Session) -> list[dict]:
+    return [get_route_status(db, route.id) for route in list_routes(db)]
+
+
+def recommend_reroute(db: Session, shipment_id: int) -> dict:
+    shipment = get_shipment(db, shipment_id)
+    delay_impact = calculate_delay_impact(db, shipment_id)
+    candidate_routes = (
+        db.query(Route)
+        .filter(Route.origin == shipment.origin, Route.destination == shipment.destination)
+        .order_by(Route.risk_level.asc(), Route.average_transit_days.asc())
+        .all()
+    )
+    recommended_route = None
+    for route in candidate_routes:
+        if route.average_transit_days is None:
+            continue
+        if route.risk_level == "HIGH":
+            continue
+        recommended_route = route
+        break
+    return {
+        "shipment_id": shipment.id,
+        "shipment_number": shipment.shipment_number,
+        "current_delay_days": delay_impact["delay_days"],
+        "affected_skus": delay_impact["affected_skus"],
+        "revenue_at_risk": delay_impact["revenue_at_risk"],
+        "recommended_mitigation": delay_impact["recommended_mitigation"],
+        "recommended_route": (
+            {
+                "route_id": recommended_route.id,
+                "name": recommended_route.name,
+                "origin": recommended_route.origin,
+                "destination": recommended_route.destination,
+                "mode": recommended_route.mode,
+                "average_transit_days": recommended_route.average_transit_days,
+                "risk_level": recommended_route.risk_level,
+            }
+            if recommended_route
+            else None
+        ),
+        "missing_data": ["carrier_api_not_configured"],
+        "todo": "Carrier API handoff is not configured; reroute output is advisory only.",
+    }
+
+
+def create_logistics_exception(
+    db: Session,
+    *,
+    shipment_id: int,
+    issue_summary: Optional[str] = None,
+) -> dict:
+    # TODO: when carrier integrations exist, attach live carrier references to exception records.
+    shipment = get_shipment(db, shipment_id)
+    delay_impact = calculate_delay_impact(db, shipment_id)
+    reroute = recommend_reroute(db, shipment_id)
+    return {
+        "exception_type": "LOGISTICS_EXCEPTION",
+        "status": "OPEN_RECOMMENDATION",
+        "shipment_id": shipment.id,
+        "shipment_number": shipment.shipment_number,
+        "issue_summary": issue_summary or "Delayed or disrupted shipment requires logistics review.",
+        "delay_days": delay_impact["delay_days"],
+        "affected_skus": delay_impact["affected_skus"],
+        "affected_purchase_orders": delay_impact["affected_purchase_orders"],
+        "affected_sales_orders": delay_impact["affected_sales_orders"],
+        "revenue_at_risk": delay_impact["revenue_at_risk"],
+        "inventory_cover_remaining": delay_impact["inventory_cover_remaining"],
+        "recommended_mitigation": delay_impact["recommended_mitigation"],
+        "recommended_reroute": reroute["recommended_route"],
+        "exception_reference": f"logex-{shipment.id}-{datetime.utcnow().strftime('%Y%m%d%H%M%S')}",
+        "mutated_tables": [],
+        "missing_data": ["carrier_api_not_configured"],
+    }
+
+
+def serialize_shipment_status(db: Session, shipment_id: int) -> dict:
+    shipment = get_shipment(db, shipment_id)
+    eta = get_eta(db, shipment_id)
+    related = _resolve_related_context(db, shipment)
+    return {
+        "shipment_id": shipment.id,
+        "shipment_number": shipment.shipment_number,
+        "status": shipment.status,
+        "carrier_name": shipment.carrier_name,
+        "tracking_number": shipment.tracking_number,
+        "origin": shipment.origin,
+        "destination": shipment.destination,
+        "related_type": shipment.related_type,
+        "related_id": shipment.related_id,
+        "delay_days": eta["delay_days"],
+        "eta": eta["estimated_arrival"],
+        "affected_skus": related["affected_products"],
+        "affected_purchase_orders": related["affected_purchase_orders"],
+        "affected_sales_orders": related["affected_sales_orders"],
+        "revenue_at_risk": related["revenue_at_risk"],
+        "inventory_cover_remaining": [
+            {
+                "product_id": item["product_id"],
+                "sku": item["sku"],
+                "inventory_cover_remaining_days": item["inventory_cover_remaining_days"],
+            }
+            for item in related["affected_products"]
+        ],
+        "recommended_mitigation": _build_mitigation(
+            eta["delay_days"],
+            related["affected_products"],
+            related["revenue_at_risk"],
+        ),
     }
 
 

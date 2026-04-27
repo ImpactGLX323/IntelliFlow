@@ -3,6 +3,7 @@ from sqlalchemy import (
     Integer,
     String,
     Float,
+    JSON,
     DateTime,
     ForeignKey,
     Text,
@@ -34,6 +35,7 @@ class User(Base):
         foreign_keys="InventoryTransaction.approved_by",
         back_populates="approved_by_user",
     )
+    agent_recommendations = relationship("AgentRecommendation", back_populates="owner")
 
 class Product(Base):
     __tablename__ = "products"
@@ -551,3 +553,23 @@ class RiskAlert(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     
     product = relationship("Product")
+
+
+class AgentRecommendation(Base):
+    __tablename__ = "agent_recommendations"
+
+    id = Column(Integer, primary_key=True, index=True)
+    job_name = Column(String, nullable=False, index=True)
+    domain = Column(String, nullable=False, index=True)
+    recommendation_type = Column(String, nullable=False, index=True)
+    severity = Column(String, nullable=False, default="medium", index=True)
+    status = Column(String, nullable=False, default="OPEN", index=True)
+    title = Column(String, nullable=False)
+    summary = Column(Text, nullable=False)
+    source_target = Column(String, nullable=True)
+    owner_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
+    payload = Column(JSON, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    owner = relationship("User", back_populates="agent_recommendations")

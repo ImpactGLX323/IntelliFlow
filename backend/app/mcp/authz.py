@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from fastapi import HTTPException, status
 
-from app.mcp.schemas import MCPRequestContext, MCPToolSpec, PlanLevel
+from app.mcp.schemas import MCPRequestContext, MCPResourceSpec, MCPToolSpec, PlanLevel
 
 
 PLAN_ORDER = {
@@ -38,3 +38,8 @@ def ensure_scope_access(context: MCPRequestContext, required_scopes: list[str]) 
 def enforce_tool_access(context: MCPRequestContext, tool: MCPToolSpec) -> None:
     ensure_plan_access(context, tool.min_plan)
     ensure_scope_access(context, tool.scopes)
+
+
+def enforce_resource_access(context: MCPRequestContext, resource: MCPResourceSpec) -> None:
+    ensure_plan_access(context, resource.min_plan)
+    ensure_scope_access(context, resource.scopes)

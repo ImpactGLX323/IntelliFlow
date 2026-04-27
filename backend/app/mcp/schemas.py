@@ -40,8 +40,20 @@ class MCPToolSpec(BaseModel):
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
 
+class MCPResourceSpec(BaseModel):
+    uri_template: str
+    domain: str
+    description: str
+    min_plan: PlanLevel = PlanLevel.FREE
+    scopes: list[str] = Field(default_factory=list)
+    handler: Callable[[Session, MCPRequestContext, dict[str, Any]], Any]
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+
 class MCPModuleSpec(BaseModel):
     name: str
     description: str
     min_plan: PlanLevel = PlanLevel.FREE
     tools: list[MCPToolSpec] = Field(default_factory=list)
+    resources: list[MCPResourceSpec] = Field(default_factory=list)

@@ -1,9 +1,18 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
+from app.agents.orchestrator import CopilotOrchestrator
 from app.database import get_db
 from app.models import User
-from app.schemas import RoadmapRequest, RoadmapResponse
+from app.schemas import (
+    AICapabilitiesResponse,
+    AgentRecommendationRead,
+    CopilotQueryRequest,
+    CopilotQueryResponse,
+    RoadmapRequest,
+    RoadmapResponse,
+)
 from app.auth import get_current_user
+from app.services import agent_recommendation_service
 from app.services import rag_service
 
 router = APIRouter()
@@ -17,11 +26,8 @@ async def generate_roadmap(
     try:
         roadmap = rag_service.generate_roadmap(db=db, user_id=current_user.id, query=request.query)
         return RoadmapResponse(**roadmap)
-    except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Error generating roadmap: {str(e)}"
-        )
+    except Exception:
+        raise HTTPException(status_code=500, detail="Error generating roadmap")
 
 @router.get("/insights")
 async def get_insights(
@@ -36,8 +42,53 @@ async def get_insights(
             "insights": roadmap.get("insights", []),
             "summary": roadmap.get("summary", "")
         }
-    except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Error generating insights: {str(e)}"
+    except Exception:
+        raise HTTPException(status_code=500, detail="Error generating insights")
+
+
+@router.post("/query", response_model=CopilotQueryResponse)
+async def query_copilot(
+    payload: CopilotQueryRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Route a natural-language copilot query through the internal MCP layer.
+
+    The orchestrator delegates to MCP resources/tools, which in turn must call
+    service-layer functions. This preserves validation, permissions, and audit
+    behavior instead of letting the AI layer bypass the application stack.
+    """
+    orchestrator = CopilotOrchestrator(request.app.state.internal_mcp)
+    try:
+        result = orchestrator.handle_query(
+            db=db,
+            user=current_user,
+            query=payload.query,
         )
+        return CopilotQueryResponse(**result)
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(status_code=500, detail="Error processing copilot query")
+
+
+@router.get("/capabilities", response_model=AICapabilitiesResponse)
+async def get_ai_capabilities(current_user: User = Depends(get_current_user)):
+    return agent_recommendation_service.get_capabilities(current_user)
+
+
+@router.get("/recommendations", response_model=list[AgentRecommendationRead])
+async def get_agent_recommendations(
+    domain: str | None = None,
+    limit: int = 50,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    return agent_recommendation_service.list_recommendations(
+        db,
+        user=current_user,
+        domain=domain,
+        limit=limit,
+    )

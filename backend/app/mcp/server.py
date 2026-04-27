@@ -30,6 +30,9 @@ class InternalMCPServer:
     def list_modules(self):
         return self.registry.list_modules()
 
+    def list_resources(self):
+        return self.registry.list_resources()
+
     def invoke(
         self,
         *,
@@ -43,6 +46,19 @@ class InternalMCPServer:
             context=context,
             tool_name=tool_name,
             payload=payload,
+        )
+
+    def read_resource(
+        self,
+        *,
+        db: Session,
+        context: MCPRequestContext,
+        uri: str,
+    ) -> MCPToolResult:
+        return self.registry.read_resource(
+            db=db,
+            context=context,
+            uri=uri,
         )
 
 

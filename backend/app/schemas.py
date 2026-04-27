@@ -132,6 +132,42 @@ class RoadmapResponse(BaseModel):
     generated_at: datetime
 
 
+class CopilotQueryRequest(BaseModel):
+    query: str
+
+
+class CopilotQueryResponse(BaseModel):
+    domain: str
+    action: str
+    query: str
+    result: dict
+    warnings: List[str] = []
+    permission_denied: bool = False
+    request_id: Optional[str] = None
+
+
+class AgentRecommendationRead(BaseModel):
+    id: int
+    job_name: str
+    domain: str
+    recommendation_type: str
+    severity: str
+    title: str
+    explanation: str
+    affected_skus: List[str] = []
+    affected_orders: List[str] = []
+    affected_shipments: List[str] = []
+    recommended_action: Optional[str] = None
+    status: str
+    created_at: datetime
+
+
+class AICapabilitiesResponse(BaseModel):
+    plan_level: str
+    allowed_domains: List[str]
+    features: dict
+
+
 class IngestRequest(BaseModel):
     source_directory: Optional[str] = None
     collection_name: Optional[str] = None
