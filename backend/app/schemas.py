@@ -146,6 +146,33 @@ class CopilotQueryResponse(BaseModel):
     request_id: Optional[str] = None
 
 
+class AICopilotRequest(BaseModel):
+    message: str
+    organization_id: Optional[str] = None
+    user_plan: str = "FREE"
+
+    @field_validator("user_plan")
+    @classmethod
+    def validate_user_plan(cls, value: str) -> str:
+        normalized = value.upper()
+        if normalized not in {"FREE", "PRO", "BOOST"}:
+            raise ValueError("user_plan must be FREE, PRO, or BOOST")
+        return normalized
+
+
+class AICopilotResponse(BaseModel):
+    intent: str
+    tools_used: List[str]
+    answer: str
+    data: dict
+    citations: List[dict] = []
+    recommendations: List[str] = []
+    warnings: List[str] = []
+    upgrade_required: bool = False
+    required_plan: Optional[str] = None
+    request_id: Optional[str] = None
+
+
 class AgentRecommendationRead(BaseModel):
     id: int
     job_name: str

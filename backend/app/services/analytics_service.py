@@ -174,7 +174,7 @@ def calculate_product_margin(
         "gross_margin": gross_margin_value,
         "gross_margin_rate": gross_margin_rate,
         "return_adjusted_margin": return_adjusted["return_adjusted_margin"],
-        "refund_amount": return_adjusted["refund_amount"],
+        "refund_amount": return_adjusted["refund_cost"],
         "replacement_cost": return_adjusted["replacement_cost"],
         "missing_data": list(return_adjusted.get("missing_data", [])),
     }

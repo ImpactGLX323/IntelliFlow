@@ -28,7 +28,7 @@ def _resource_weekly_returns(db, context: MCPRequestContext, payload: dict) -> d
 
 
 def _resource_returns_by_sku(db, context: MCPRequestContext, payload: dict) -> dict:
-    product = returns_service._get_product_by_sku(db, payload["sku"])
+    product = returns_service.get_product_by_sku(db, payload["sku"])
     start, end = _parse_range(payload)
     return {
         "return_rate": returns_service.get_return_rate(db, product_id=product.id, start_date=start, end_date=end),
@@ -45,7 +45,7 @@ def _resource_high_return_products(db, context: MCPRequestContext, payload: dict
 def _tool_get_return_rate(db, context: MCPRequestContext, payload: dict) -> dict:
     product_id = payload.get("product_id")
     if product_id is None and "sku" in payload:
-        product_id = returns_service._get_product_by_sku(db, payload["sku"]).id
+        product_id = returns_service.get_product_by_sku(db, payload["sku"]).id
     start, end = _parse_range(payload)
     return returns_service.get_return_rate(db, product_id=int(product_id), start_date=start, end_date=end)
 
@@ -53,7 +53,7 @@ def _tool_get_return_rate(db, context: MCPRequestContext, payload: dict) -> dict
 def _tool_classify_return_reasons(db, context: MCPRequestContext, payload: dict) -> dict:
     product_id = payload.get("product_id")
     if product_id is None and payload.get("sku"):
-        product_id = returns_service._get_product_by_sku(db, payload["sku"]).id
+        product_id = returns_service.get_product_by_sku(db, payload["sku"]).id
     start, end = _parse_range(payload)
     return returns_service.classify_return_reasons(db, product_id=product_id, start_date=start, end_date=end)
 
@@ -61,7 +61,7 @@ def _tool_classify_return_reasons(db, context: MCPRequestContext, payload: dict)
 def _tool_calculate_return_adjusted_margin(db, context: MCPRequestContext, payload: dict) -> dict:
     product_id = payload.get("product_id")
     if product_id is None and "sku" in payload:
-        product_id = returns_service._get_product_by_sku(db, payload["sku"]).id
+        product_id = returns_service.get_product_by_sku(db, payload["sku"]).id
     start, end = _parse_range(payload)
     return returns_service.calculate_return_adjusted_margin(db, int(product_id), start, end)
 
@@ -69,7 +69,7 @@ def _tool_calculate_return_adjusted_margin(db, context: MCPRequestContext, paylo
 def _tool_detect_return_spike(db, context: MCPRequestContext, payload: dict) -> dict:
     product_id = payload.get("product_id")
     if product_id is None and "sku" in payload:
-        product_id = returns_service._get_product_by_sku(db, payload["sku"]).id
+        product_id = returns_service.get_product_by_sku(db, payload["sku"]).id
     return returns_service.detect_return_spike(
         db,
         product_id=int(product_id),
@@ -81,7 +81,7 @@ def _tool_detect_return_spike(db, context: MCPRequestContext, payload: dict) -> 
 def _tool_link_returns_to_supplier(db, context: MCPRequestContext, payload: dict) -> dict:
     product_id = payload.get("product_id")
     if product_id is None and payload.get("sku"):
-        product_id = returns_service._get_product_by_sku(db, payload["sku"]).id
+        product_id = returns_service.get_product_by_sku(db, payload["sku"]).id
     start, end = _parse_range(payload)
     return returns_service.link_returns_to_supplier(db, product_id=product_id, start_date=start, end_date=end)
 
@@ -89,7 +89,7 @@ def _tool_link_returns_to_supplier(db, context: MCPRequestContext, payload: dict
 def _tool_link_returns_to_warehouse(db, context: MCPRequestContext, payload: dict) -> dict:
     product_id = payload.get("product_id")
     if product_id is None and payload.get("sku"):
-        product_id = returns_service._get_product_by_sku(db, payload["sku"]).id
+        product_id = returns_service.get_product_by_sku(db, payload["sku"]).id
     start, end = _parse_range(payload)
     return returns_service.link_returns_to_warehouse(db, product_id=product_id, start_date=start, end_date=end)
 
@@ -97,7 +97,7 @@ def _tool_link_returns_to_warehouse(db, context: MCPRequestContext, payload: dic
 def _tool_create_quality_investigation(db, context: MCPRequestContext, payload: dict) -> dict:
     product_id = payload.get("product_id")
     if product_id is None and payload.get("sku"):
-        product_id = returns_service._get_product_by_sku(db, payload["sku"]).id
+        product_id = returns_service.get_product_by_sku(db, payload["sku"]).id
     start, end = _parse_range(payload)
     return returns_service.create_quality_investigation(
         db,

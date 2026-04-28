@@ -28,6 +28,30 @@ def resolve_plan_level(user: User) -> PlanLevel:
     return PlanLevel.FREE
 
 
+def parse_plan_level(value: str | PlanLevel | None) -> PlanLevel:
+    if isinstance(value, PlanLevel):
+        return value
+    if value is None:
+        return PlanLevel.FREE
+    return PlanLevel(str(value).upper())
+
+
+def effective_plan_level(user: User, requested_plan: str | PlanLevel | None = None) -> PlanLevel:
+    """
+    Resolve the effective MCP plan for a request.
+
+    If the user model later stores a persisted subscription tier, that tier acts
+    as the server-side ceiling. Until then, the requested plan is used so the
+    orchestrator can still apply MCP gating consistently for signed-in clients.
+    """
+    persisted_plan = resolve_plan_level(user)
+    requested = parse_plan_level(requested_plan)
+    if persisted_plan != PlanLevel.FREE or getattr(user, "plan_level", None) or getattr(user, "subscription_plan", None) or getattr(user, "subscription_tier", None):
+        plan_rank = {PlanLevel.FREE: 0, PlanLevel.PRO: 1, PlanLevel.BOOST: 2}
+        return persisted_plan if plan_rank[persisted_plan] <= plan_rank[requested] else requested
+    return requested
+
+
 def resolve_scopes(user: User) -> list[str]:
     raw_scopes = getattr(user, "scopes", None)
     if raw_scopes is None:
@@ -51,11 +75,16 @@ class InternalMCPClient:
     def __init__(self, server: InternalMCPServer) -> None:
         self.server = server
 
-    def build_context(self, user: User, request_id: str | None = None) -> MCPRequestContext:
+    def build_context(
+        self,
+        user: User,
+        request_id: str | None = None,
+        requested_plan: str | PlanLevel | None = None,
+    ) -> MCPRequestContext:
         return MCPRequestContext(
             user_id=user.id,
             email=user.email,
-            plan_level=resolve_plan_level(user),
+            plan_level=effective_plan_level(user, requested_plan),
             scopes=resolve_scopes(user),
             request_id=request_id or str(uuid4()),
         )
@@ -117,8 +146,9 @@ class InternalMCPClient:
         tool_name: str,
         payload: dict[str, Any] | None = None,
         request_id: str | None = None,
+        requested_plan: str | PlanLevel | None = None,
     ) -> MCPToolResult:
-        context = self.build_context(user, request_id=request_id)
+        context = self.build_context(user, request_id=request_id, requested_plan=requested_plan)
         return self.server.invoke(
             db=db,
             context=context,
@@ -133,8 +163,9 @@ class InternalMCPClient:
         user: User,
         uri: str,
         request_id: str | None = None,
+        requested_plan: str | PlanLevel | None = None,
     ) -> MCPToolResult:
-        context = self.build_context(user, request_id=request_id)
+        context = self.build_context(user, request_id=request_id, requested_plan=requested_plan)
         return self.server.read_resource(
             db=db,
             context=context,

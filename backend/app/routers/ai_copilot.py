@@ -4,6 +4,8 @@ from app.agents.orchestrator import CopilotOrchestrator
 from app.database import get_db
 from app.models import User
 from app.schemas import (
+    AICopilotRequest,
+    AICopilotResponse,
     AICapabilitiesResponse,
     AgentRecommendationRead,
     CopilotQueryRequest,
@@ -67,11 +69,42 @@ async def query_copilot(
             user=current_user,
             query=payload.query,
         )
-        return CopilotQueryResponse(**result)
+        return CopilotQueryResponse(
+            domain=result["intent"],
+            action="orchestrated_query",
+            query=payload.query,
+            result=result["data"],
+            warnings=result.get("warnings", []),
+            permission_denied=result.get("upgrade_required", False),
+            request_id=result.get("request_id"),
+        )
     except HTTPException:
         raise
     except Exception:
         raise HTTPException(status_code=500, detail="Error processing copilot query")
+
+
+@router.post("/ai-copilot", response_model=AICopilotResponse)
+async def ai_copilot_message(
+    payload: AICopilotRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    orchestrator = CopilotOrchestrator(request.app.state.internal_mcp)
+    try:
+        result = orchestrator.handle_query(
+            db=db,
+            user=current_user,
+            query=payload.message,
+            organization_id=payload.organization_id,
+            requested_plan=payload.user_plan,
+        )
+        return AICopilotResponse(**result)
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(status_code=500, detail="Error processing AI copilot request")
 
 
 @router.get("/capabilities", response_model=AICapabilitiesResponse)

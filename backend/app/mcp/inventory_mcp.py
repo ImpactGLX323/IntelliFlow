@@ -47,7 +47,7 @@ def _tool_get_stock_position(db, context: MCPRequestContext, payload: dict) -> d
 def _tool_get_available_to_promise(db, context: MCPRequestContext, payload: dict) -> dict:
     product_id = payload.get("product_id")
     if product_id is None and "sku" in payload:
-        product = stock_ledger_service._get_product_by_sku(db, payload["sku"])
+        product = stock_ledger_service.get_product_by_sku(db, payload["sku"])
         product_id = product.id
     return stock_ledger_service.get_available_to_promise(
         db,
@@ -63,7 +63,7 @@ def _tool_get_low_stock_items(db, context: MCPRequestContext, payload: dict) -> 
 def _tool_calculate_days_of_cover(db, context: MCPRequestContext, payload: dict) -> dict:
     product_id = payload.get("product_id")
     if product_id is None and "sku" in payload:
-        product = stock_ledger_service._get_product_by_sku(db, payload["sku"])
+        product = stock_ledger_service.get_product_by_sku(db, payload["sku"])
         product_id = product.id
     return stock_ledger_service.calculate_days_of_cover(
         db,
@@ -76,7 +76,7 @@ def _tool_calculate_days_of_cover(db, context: MCPRequestContext, payload: dict)
 def _tool_recommend_stock_transfer(db, context: MCPRequestContext, payload: dict) -> dict:
     product_id = payload.get("product_id")
     if product_id is None and "sku" in payload:
-        product = stock_ledger_service._get_product_by_sku(db, payload["sku"])
+        product = stock_ledger_service.get_product_by_sku(db, payload["sku"])
         product_id = product.id
     return stock_ledger_service.recommend_stock_transfer(
         db,
@@ -88,7 +88,7 @@ def _tool_recommend_stock_transfer(db, context: MCPRequestContext, payload: dict
 def _tool_create_stock_adjustment_request(db, context: MCPRequestContext, payload: dict) -> dict:
     product_id = payload.get("product_id")
     if product_id is None and "sku" in payload:
-        product = stock_ledger_service._get_product_by_sku(db, payload["sku"])
+        product = stock_ledger_service.get_product_by_sku(db, payload["sku"])
         product_id = product.id
     return stock_ledger_service.create_stock_adjustment_request(
         db,
@@ -105,7 +105,7 @@ def _tool_create_stock_adjustment_request(db, context: MCPRequestContext, payloa
 def _tool_create_transfer_request(db, context: MCPRequestContext, payload: dict) -> dict:
     product_id = payload.get("product_id")
     if product_id is None and "sku" in payload:
-        product = stock_ledger_service._get_product_by_sku(db, payload["sku"])
+        product = stock_ledger_service.get_product_by_sku(db, payload["sku"])
         product_id = product.id
     return stock_ledger_service.create_transfer_request(
         db,
@@ -158,7 +158,7 @@ def register_inventory_mcp() -> MCPModuleSpec:
                 name="inventory.get_stock_position",
                 domain="inventory",
                 description="Read stock position for a product or SKU from the inventory ledger.",
-                min_plan=PlanLevel.FREE,
+                min_plan=PlanLevel.PRO,
                 read_only=True,
                 handler=_tool_get_stock_position,
             ),
@@ -166,7 +166,7 @@ def register_inventory_mcp() -> MCPModuleSpec:
                 name="inventory.get_available_to_promise",
                 domain="inventory",
                 description="Read ATP based on ledger available stock.",
-                min_plan=PlanLevel.FREE,
+                min_plan=PlanLevel.PRO,
                 read_only=True,
                 handler=_tool_get_available_to_promise,
             ),
@@ -174,7 +174,7 @@ def register_inventory_mcp() -> MCPModuleSpec:
                 name="inventory.get_low_stock_items",
                 domain="inventory",
                 description="Read low-stock items using ledger availability and product thresholds.",
-                min_plan=PlanLevel.FREE,
+                min_plan=PlanLevel.PRO,
                 read_only=True,
                 handler=_tool_get_low_stock_items,
             ),
@@ -190,7 +190,7 @@ def register_inventory_mcp() -> MCPModuleSpec:
                 name="inventory.recommend_stock_transfer",
                 domain="inventory",
                 description="Recommend a source warehouse for rebalancing stock without mutating inventory.",
-                min_plan=PlanLevel.PRO,
+                min_plan=PlanLevel.BOOST,
                 read_only=True,
                 handler=_tool_recommend_stock_transfer,
             ),
@@ -198,7 +198,7 @@ def register_inventory_mcp() -> MCPModuleSpec:
                 name="inventory.create_stock_adjustment_request",
                 domain="inventory",
                 description="Create a non-mutating stock adjustment review request backed by service-layer validation.",
-                min_plan=PlanLevel.PRO,
+                min_plan=PlanLevel.BOOST,
                 read_only=False,
                 handler=_tool_create_stock_adjustment_request,
             ),
@@ -206,7 +206,7 @@ def register_inventory_mcp() -> MCPModuleSpec:
                 name="inventory.create_transfer_request",
                 domain="inventory",
                 description="Create a non-mutating stock transfer review request backed by service-layer validation.",
-                min_plan=PlanLevel.PRO,
+                min_plan=PlanLevel.BOOST,
                 read_only=False,
                 handler=_tool_create_transfer_request,
             ),

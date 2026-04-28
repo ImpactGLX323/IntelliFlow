@@ -48,6 +48,10 @@ def _get_product_by_sku(db: Session, sku: str) -> Product:
     return product
 
 
+def get_product_by_sku(db: Session, sku: str) -> Product:
+    return _get_product_by_sku(db, sku)
+
+
 def _apply_inventory_filters(query, product_id: int, warehouse_id: Optional[int] = None):
     query = query.filter(InventoryTransaction.product_id == product_id)
     if warehouse_id is not None:

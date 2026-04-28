@@ -37,6 +37,10 @@ def _get_product_by_sku(db: Session, sku: str) -> Product:
     return product
 
 
+def get_product_by_sku(db: Session, sku: str) -> Product:
+    return _get_product_by_sku(db, sku)
+
+
 def _get_return_items_for_product(
     db: Session,
     *,

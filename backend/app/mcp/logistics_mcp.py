@@ -69,13 +69,6 @@ def register_logistics_mcp() -> MCPModuleSpec:
         min_plan=PlanLevel.BOOST,
         resources=[
             MCPResourceSpec(
-                uri_template="shipment://{shipment_id}",
-                domain="logistics",
-                description="Read a shipment with business impact context.",
-                min_plan=PlanLevel.BOOST,
-                handler=_resource_shipment,
-            ),
-            MCPResourceSpec(
                 uri_template="shipment://international/active",
                 domain="logistics",
                 description="Read active international shipments with delay and business impact context.",
@@ -83,11 +76,11 @@ def register_logistics_mcp() -> MCPModuleSpec:
                 handler=_resource_international_active,
             ),
             MCPResourceSpec(
-                uri_template="route://{route_id}",
+                uri_template="shipment://{shipment_id}",
                 domain="logistics",
-                description="Read route status based on matching shipment activity and delays.",
+                description="Read a shipment with business impact context.",
                 min_plan=PlanLevel.BOOST,
-                handler=_resource_route,
+                handler=_resource_shipment,
             ),
             MCPResourceSpec(
                 uri_template="route://delays",
@@ -95,6 +88,13 @@ def register_logistics_mcp() -> MCPModuleSpec:
                 description="Read route delay status summary.",
                 min_plan=PlanLevel.BOOST,
                 handler=_resource_route_delays,
+            ),
+            MCPResourceSpec(
+                uri_template="route://{route_id}",
+                domain="logistics",
+                description="Read route status based on matching shipment activity and delays.",
+                min_plan=PlanLevel.BOOST,
+                handler=_resource_route,
             ),
         ],
         tools=[
