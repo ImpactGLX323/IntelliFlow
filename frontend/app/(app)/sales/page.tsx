@@ -112,7 +112,7 @@ export default function SalesPage() {
   return (
     <div className="space-y-6 overflow-x-hidden">
       <section className="grid min-w-0 gap-6 xl:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)]">
-        <div className="min-w-0 rounded-[1.5rem] border border-white/12 bg-white/[0.04] p-5 backdrop-blur-sm sm:rounded-[2rem] sm:p-7">
+        <div className="app-surface min-w-0 rounded-[1.5rem] p-5 sm:rounded-[2rem] sm:p-7">
           <p className="font-montserrat text-xs font-semibold uppercase tracking-[0.28em] text-[#ff9b3d]/75">
             Sales Insights
           </p>
@@ -124,7 +124,7 @@ export default function SalesPage() {
           </p>
         </div>
 
-        <div className="min-w-0 rounded-[1.5rem] border border-white/12 bg-white/[0.04] p-5 backdrop-blur-sm sm:rounded-[2rem] sm:p-6">
+        <div className="app-surface min-w-0 rounded-[1.5rem] p-5 sm:rounded-[2rem] sm:p-6">
           {capabilities?.features.sales_insights ? (
             <>
               <p className="font-montserrat text-[11px] uppercase tracking-[0.18em] text-white/40">This week&apos;s best sellers</p>
@@ -162,7 +162,7 @@ export default function SalesPage() {
               ['Transactions', sales.length.toString()],
               ['Products Sold', new Set(sales.map((sale) => sale.product_id)).size.toString()],
             ].map(([label, value]) => (
-              <div key={label} className="min-w-0 rounded-[1.4rem] border border-white/10 bg-white/[0.03] p-4">
+              <div key={label} className="app-surface-soft min-w-0 rounded-[1.4rem] p-4">
                 <p className="font-montserrat text-[11px] uppercase tracking-[0.14em] text-white/38">{label}</p>
                 <p className="font-montserrat mt-3 text-[clamp(1.25rem,4vw,1.5rem)] font-semibold text-white">{value}</p>
               </div>
@@ -170,7 +170,7 @@ export default function SalesPage() {
           </div>
           <button
             onClick={() => setShowForm(!showForm)}
-            className="font-montserrat mt-5 rounded-full bg-[#0f223a] px-5 py-3 text-sm font-semibold uppercase tracking-[0.08em] text-white ring-1 ring-white/10"
+            className="app-button-primary font-montserrat mt-5 px-5 py-3 text-sm font-semibold uppercase tracking-[0.08em]"
           >
             {showForm ? 'Close form' : 'Record sale'}
           </button>
@@ -178,7 +178,7 @@ export default function SalesPage() {
       </section>
 
       {showForm && (
-        <section className="min-w-0 rounded-[1.5rem] border border-white/12 bg-white/[0.04] p-5 backdrop-blur-sm sm:rounded-[1.9rem] sm:p-6">
+        <section className="app-surface min-w-0 rounded-[1.5rem] p-5 sm:rounded-[1.9rem] sm:p-6">
           <h2 className="font-montserrat text-2xl font-semibold text-white">Record new sale</h2>
           <form onSubmit={handleSubmit} className="mt-6 grid min-w-0 gap-5 md:grid-cols-2">
             <div className="min-w-0">
@@ -250,7 +250,7 @@ export default function SalesPage() {
             <div className="min-w-0 md:col-span-2">
               <button
                 type="submit"
-                className="font-montserrat rounded-full bg-[#0f223a] px-5 py-3 text-sm font-semibold uppercase tracking-[0.08em] text-white ring-1 ring-white/10 sm:px-6"
+                className="app-button-primary font-montserrat px-5 py-3 text-sm font-semibold uppercase tracking-[0.08em] sm:px-6"
               >
                 Record sale
               </button>
@@ -259,7 +259,7 @@ export default function SalesPage() {
         </section>
       )}
 
-      <section className="min-w-0 overflow-hidden rounded-[1.5rem] border border-white/12 bg-white/[0.04] backdrop-blur-sm sm:rounded-[1.9rem]">
+      <section className="app-surface min-w-0 overflow-hidden rounded-[1.5rem] sm:rounded-[1.9rem]">
         <div className="border-b border-white/10 px-6 py-5">
           <h2 className="font-montserrat text-2xl font-semibold text-white">Sales ledger</h2>
         </div>

@@ -87,11 +87,8 @@ export default function RegisterPage() {
 
         <header className="relative z-10 px-6 pt-8 sm:px-10">
           <div className="mx-auto flex min-w-0 max-w-7xl items-center justify-between gap-4">
-          <Link href="/" className="flex min-w-0 items-center gap-3">
+          <Link href="/" className="flex min-w-0 items-center">
             <Image src={logo} alt="IntelliFlow" className="h-9 w-auto" priority />
-            <span className="truncate font-montserrat text-[11px] font-semibold uppercase tracking-[0.28em] text-white/68 sm:tracking-[0.38em]">
-              IntelliFlow
-            </span>
           </Link>
           <Link
             href="/login"
@@ -124,7 +121,7 @@ export default function RegisterPage() {
               ].map((item) => (
                 <div
                   key={item}
-                  className="font-lexend rounded-[1.4rem] border border-white/12 bg-white/[0.04] px-5 py-4 text-sm text-white/76 backdrop-blur-sm"
+                  className="app-surface-soft font-lexend rounded-[1.4rem] px-5 py-4 text-sm text-white/76"
                 >
                   {item}
                 </div>
@@ -132,7 +129,7 @@ export default function RegisterPage() {
             </div>
           </section>
 
-          <section className="min-w-0 rounded-[2rem] border border-white/12 bg-white/[0.065] p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] backdrop-blur-xl sm:p-8">
+          <section className="app-surface min-w-0 rounded-[2rem] p-6 sm:p-8">
             <p className="font-montserrat text-xs font-semibold uppercase tracking-[0.28em] text-[#8ea2ba]">
               Create Account
             </p>
@@ -211,7 +208,7 @@ export default function RegisterPage() {
               <button
                 type="submit"
                 disabled={loading}
-                className="font-montserrat w-full rounded-full bg-[#0f223a] px-6 py-3 text-sm font-semibold uppercase tracking-[0.08em] text-white ring-1 ring-white/10 disabled:opacity-60"
+                className="app-button-primary font-montserrat w-full px-6 py-3 text-sm font-semibold uppercase tracking-[0.08em] disabled:opacity-60"
               >
                 {loading ? 'Creating account...' : 'Create workspace'}
               </button>

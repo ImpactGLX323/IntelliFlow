@@ -56,7 +56,7 @@ export default function DashboardPage() {
   return (
     <div className="space-y-6">
       <section className="grid min-w-0 gap-6 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
-        <div className="min-w-0 rounded-[2rem] border border-white/12 bg-white/[0.04] p-6 backdrop-blur-sm sm:p-7">
+        <div className="app-surface min-w-0 rounded-[2rem] p-6 sm:p-7">
           <p className="font-montserrat text-xs font-semibold uppercase tracking-[0.28em] text-[#8ea2ba]">
             Dashboard
           </p>
@@ -73,7 +73,7 @@ export default function DashboardPage() {
               ['Region', 'Malaysia / ASEAN'],
               ['Coverage', 'Last 30 days'],
             ].map(([label, value]) => (
-              <div key={label} className="rounded-[1.4rem] border border-white/10 bg-white/[0.03] p-4">
+              <div key={label} className="app-surface-soft rounded-[1.4rem] p-4">
                 <p className="font-montserrat text-[11px] uppercase tracking-[0.18em] text-white/38">{label}</p>
                 <p className="font-lexend mt-3 text-sm text-white/82">{value}</p>
               </div>
@@ -81,7 +81,7 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        <div className="min-w-0 rounded-[2rem] border border-white/12 bg-white/[0.04] p-6 backdrop-blur-sm">
+        <div className="app-surface min-w-0 rounded-[2rem] p-6">
           <p className="font-montserrat text-xs font-semibold uppercase tracking-[0.22em] text-white/40">
             Quick snapshot
           </p>
@@ -92,7 +92,7 @@ export default function DashboardPage() {
               ['Products', stats.total_products.toLocaleString()],
               ['Low stock', stats.low_stock_alerts.toLocaleString()],
             ].map(([label, value]) => (
-              <div key={label} className="rounded-[1.4rem] border border-white/10 bg-white/[0.03] p-4">
+              <div key={label} className="app-surface-soft rounded-[1.4rem] p-4">
                 <p className="font-montserrat text-[11px] uppercase tracking-[0.18em] text-white/38">{label}</p>
                 <p className="font-montserrat mt-3 text-[clamp(1.35rem,4vw,1.5rem)] font-semibold text-white">{value}</p>
               </div>
@@ -124,7 +124,7 @@ export default function DashboardPage() {
             meta: 'Needs review',
           },
         ].map((item) => (
-          <div key={item.label} className="min-w-0 rounded-[1.7rem] border border-white/12 bg-white/[0.04] p-5 backdrop-blur-sm">
+          <div key={item.label} className="app-surface min-w-0 rounded-[1.7rem] p-5">
             <p className="font-montserrat text-[11px] uppercase tracking-[0.18em] text-white/38">{item.label}</p>
             <p className="font-montserrat mt-4 text-[clamp(1.65rem,4vw,1.875rem)] font-semibold text-white">{item.value}</p>
             <p className="font-lexend mt-3 text-sm text-white/54">{item.meta}</p>
@@ -133,7 +133,7 @@ export default function DashboardPage() {
       </section>
 
       <section className="grid min-w-0 gap-6 xl:grid-cols-[minmax(0,1.25fr)_minmax(0,0.75fr)]">
-        <div className="min-w-0 rounded-[1.9rem] border border-white/12 bg-white/[0.04] p-6 backdrop-blur-sm">
+        <div className="app-surface min-w-0 rounded-[1.9rem] p-6">
           <div className="flex items-center justify-between">
             <div className="min-w-0">
               <p className="font-montserrat text-xs uppercase tracking-[0.22em] text-white/38">Revenue Trend</p>
@@ -160,11 +160,11 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        <div className="min-w-0 rounded-[1.9rem] border border-white/12 bg-white/[0.04] p-6 backdrop-blur-sm">
+        <div className="app-surface min-w-0 rounded-[1.9rem] p-6">
           <p className="font-montserrat text-xs uppercase tracking-[0.22em] text-white/38">Top Sellers</p>
           <div className="mt-5 space-y-3">
             {stats.top_sellers.slice(0, 5).map((seller) => (
-              <div key={seller.product_id} className="min-w-0 rounded-[1.3rem] border border-white/10 bg-white/[0.03] px-4 py-4">
+              <div key={seller.product_id} className="app-surface-soft min-w-0 rounded-[1.3rem] px-4 py-4">
                 <div className="flex min-w-0 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                   <div className="min-w-0">
                     <p className="font-montserrat text-sm font-semibold text-white">{seller.product_name}</p>
@@ -183,7 +183,7 @@ export default function DashboardPage() {
       </section>
 
       <section className="grid min-w-0 gap-6 xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
-        <div className="min-w-0 rounded-[1.9rem] border border-white/12 bg-white/[0.04] p-6 backdrop-blur-sm">
+        <div className="app-surface min-w-0 rounded-[1.9rem] p-6">
           <p className="font-montserrat text-xs uppercase tracking-[0.22em] text-white/38">Operational Mix</p>
           <div className="mt-6 h-72">
             <ResponsiveContainer width="100%" height="100%">
@@ -205,7 +205,7 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        <div className="min-w-0 rounded-[1.9rem] border border-white/12 bg-white/[0.04] p-6 backdrop-blur-sm">
+        <div className="app-surface min-w-0 rounded-[1.9rem] p-6">
           <p className="font-montserrat text-xs uppercase tracking-[0.22em] text-white/38">Regional Priorities</p>
           <div className="mt-5 grid min-w-0 gap-4 md:grid-cols-2">
             {[
@@ -214,7 +214,7 @@ export default function DashboardPage() {
               ['Reorder decisions', 'Use order momentum and stock pressure to time replenishment.'],
               ['Compliance readiness', 'Prepare exports and invoicing data for regional reporting workflows.'],
             ].map(([title, body]) => (
-              <div key={title} className="rounded-[1.35rem] border border-white/10 bg-white/[0.03] p-4">
+              <div key={title} className="app-surface-soft rounded-[1.35rem] p-4">
                 <p className="font-montserrat text-sm font-semibold text-white">{title}</p>
                 <p className="font-lexend mt-3 text-sm leading-7 text-white/58">{body}</p>
               </div>

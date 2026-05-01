@@ -70,11 +70,8 @@ export default function LoginPage() {
 
         <header className="relative z-10 px-6 pt-8 sm:px-10">
           <div className="mx-auto flex min-w-0 max-w-7xl items-center justify-between gap-4">
-          <Link href="/" className="flex min-w-0 items-center gap-3">
+          <Link href="/" className="flex min-w-0 items-center">
             <Image src={logo} alt="IntelliFlow" className="h-9 w-auto" priority />
-            <span className="truncate font-montserrat text-[11px] font-semibold uppercase tracking-[0.28em] text-white/68 sm:tracking-[0.38em]">
-              IntelliFlow
-            </span>
           </Link>
           <Link
             href="/register"
@@ -100,14 +97,14 @@ export default function LoginPage() {
             </p>
 
             <div className="mt-10 grid min-w-0 gap-4 sm:grid-cols-2">
-              <div className="rounded-[1.5rem] border border-white/12 bg-white/[0.04] p-5 backdrop-blur-sm">
+              <div className="app-surface-soft rounded-[1.5rem] p-5">
                 <p className="font-montserrat text-xs uppercase tracking-[0.18em] text-white/42">Visibility</p>
                 <p className="font-montserrat mt-3 text-3xl font-semibold text-white">Live</p>
                 <p className="font-lexend mt-3 text-sm leading-7 text-white/58">
                   Port, transit, and platform signals in one login.
                 </p>
               </div>
-              <div className="rounded-[1.5rem] border border-white/12 bg-white/[0.04] p-5 backdrop-blur-sm">
+              <div className="app-surface-soft rounded-[1.5rem] p-5">
                 <p className="font-montserrat text-xs uppercase tracking-[0.18em] text-white/42">Control</p>
                 <p className="font-montserrat mt-3 text-3xl font-semibold text-white">99.8%</p>
                 <p className="font-lexend mt-3 text-sm leading-7 text-white/58">
@@ -117,7 +114,7 @@ export default function LoginPage() {
             </div>
           </section>
 
-          <section className="min-w-0 rounded-[2rem] border border-white/12 bg-white/[0.065] p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] backdrop-blur-xl sm:p-8">
+          <section className="app-surface min-w-0 rounded-[2rem] p-6 sm:p-8">
             <p className="font-montserrat text-xs font-semibold uppercase tracking-[0.28em] text-[#8ea2ba]">
               Sign In
             </p>
@@ -167,14 +164,14 @@ export default function LoginPage() {
                 <button
                   type="submit"
                   disabled={loading}
-                  className="font-montserrat rounded-full bg-[#0f223a] px-6 py-3 text-sm font-semibold uppercase tracking-[0.08em] text-white ring-1 ring-white/10 disabled:opacity-60"
+                  className="app-button-primary font-montserrat px-6 py-3 text-sm font-semibold uppercase tracking-[0.08em] disabled:opacity-60"
                 >
                   {loading ? 'Signing in...' : 'Continue'}
                 </button>
                 <button
                   type="button"
                   onClick={() => router.push('/dashboard')}
-                  className="font-montserrat rounded-full border border-white/16 bg-white/[0.03] px-6 py-3 text-sm font-semibold uppercase tracking-[0.08em] text-white/88"
+                  className="app-button-secondary font-montserrat px-6 py-3 text-sm font-semibold uppercase tracking-[0.08em]"
                 >
                   Continue as guest
                 </button>

@@ -11,6 +11,7 @@ from app.routers import (
     inventory,
     logistics,
     products,
+    public_logistics,
     purchase_orders,
     reorder,
     returns,
@@ -66,6 +67,7 @@ app.include_router(reorder.router, prefix="/api", tags=["reorder"])
 app.include_router(warehouse_workflows.router, prefix="/api", tags=["warehouse-workflows"])
 app.include_router(returns.router, prefix="/api/returns", tags=["returns"])
 app.include_router(logistics.router, prefix="/api", tags=["logistics"])
+app.include_router(public_logistics.router, prefix="/public/logistics", tags=["public-logistics"])
 app.include_router(analytics.router, prefix="/api/analytics", tags=["analytics"])
 app.include_router(ai_copilot.router, prefix="/api/ai", tags=["ai"])
 app.include_router(inventory.router, prefix="/api", tags=["inventory"])
