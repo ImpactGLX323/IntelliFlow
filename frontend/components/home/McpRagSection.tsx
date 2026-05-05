@@ -24,7 +24,7 @@ const panels = [
 export default function McpRagSection() {
   return (
     <section id="mcp-rag" className="px-4 py-14 sm:px-6 sm:py-20">
-      <div className="mx-auto max-w-7xl rounded-[2rem] border border-black/8 bg-[linear-gradient(180deg,rgba(17,19,24,0.98),rgba(27,34,44,0.96))] px-6 py-8 text-white shadow-[0_50px_120px_-72px_rgba(15,23,42,0.7)] sm:px-8 sm:py-10 lg:px-12 dark:border-white/10 dark:bg-[linear-gradient(180deg,rgba(35,23,17,0.98),rgba(18,13,10,0.98))]">
+      <div className="mx-auto max-w-7xl rounded-[2rem] border border-[#604630] bg-[linear-gradient(180deg,rgba(49,34,25,0.5),rgba(22,18,16,0.8))] px-6 py-8 text-white shadow-[0_50px_120px_-72px_rgba(15,23,42,0.7)] backdrop-blur-[26px] sm:px-8 sm:py-10 lg:px-12 dark:border-white/10 dark:bg-[linear-gradient(180deg,rgba(35,23,17,0.98),rgba(18,13,10,0.98))]">
         <div className="max-w-3xl">
           <p className="font-montserrat text-xs font-semibold uppercase tracking-[0.28em] text-[#ff9b3d]/78">
             MCP + RAG Operations Layer
@@ -44,7 +44,7 @@ export default function McpRagSection() {
           {panels.map((panel) => (
             <article
               key={panel.title}
-              className="rounded-[1.6rem] border border-white/10 bg-white/[0.06] p-5 transition-all duration-200 hover:-translate-y-1 hover:shadow-[0_22px_50px_-28px_rgba(0,0,0,0.45)] active:scale-[0.99]"
+              className="rounded-[1.6rem] border border-[#c39569]/14 bg-[#8f6442]/14 p-5 transition-all duration-200 hover:-translate-y-1 hover:shadow-[0_22px_50px_-28px_rgba(0,0,0,0.45)] active:scale-[0.99]"
             >
               <p className="font-montserrat text-sm font-semibold uppercase tracking-[0.14em] text-white">
                 {panel.title}

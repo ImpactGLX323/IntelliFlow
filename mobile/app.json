@@ -1,16 +1,16 @@
 {
   "expo": {
-    "name": "mobile",
-    "slug": "mobile",
+    "name": "IntelliFlow Mobile",
+    "slug": "intelliflow-mobile",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
-    "userInterfaceStyle": "light",
+    "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "splash": {
-      "image": "./assets/splash-icon.png",
+      "image": "./assets/logo/intelliflow-logo.png",
       "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
+      "backgroundColor": "#140f0c"
     },
     "ios": {
       "supportsTablet": true
@@ -18,9 +18,12 @@
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
+        "backgroundColor": "#140f0c"
       },
       "edgeToEdgeEnabled": true
+    },
+    "extra": {
+      "apiUrl": "https://YOUR_HOSTED_DEMO_BACKEND_URL"
     },
     "web": {
       "favicon": "./assets/favicon.png"

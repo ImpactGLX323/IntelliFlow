@@ -7,6 +7,9 @@ from sqlalchemy.orm import Session
 import firebase_admin
 from firebase_admin import auth as firebase_auth
 
+from app.core.config import get_app_config
+from app.core.demo import ensure_demo_data_seeded, is_demo_mode_enabled
+from app.core.security import is_demo_access_token
 from app.database import get_db
 from app.firebase_admin import init_firebase_admin
 from app.models import User
@@ -30,6 +33,19 @@ async def get_current_user(
         raise credentials_exception
 
     token = credentials.credentials
+
+    if is_demo_access_token(token):
+        if not is_demo_mode_enabled():
+            raise credentials_exception
+        demo_context = ensure_demo_data_seeded(db)
+        user = db.query(User).filter(User.email == demo_context["email"]).first()
+        if user is None:
+            raise credentials_exception
+        config = get_app_config()
+        setattr(user, "organization_id", config.demo_org_id)
+        setattr(user, "plan_level", config.demo_user_plan)
+        setattr(user, "is_demo_user", True)
+        return user
 
     if not firebase_admin._apps:
         app = init_firebase_admin()
@@ -60,4 +76,5 @@ async def get_current_user(
         db.commit()
         db.refresh(user)
 
+    setattr(user, "is_demo_user", False)
     return user

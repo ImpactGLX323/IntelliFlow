@@ -1,5 +1,8 @@
+import os
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from app.core.config import get_app_config
 from app.jobs.scheduler import build_default_scheduler, should_enable_scheduler
 from app.mcp import InternalMCPServer
 from app.routers import (
@@ -7,11 +10,14 @@ from app.routers import (
     analytics,
     auth,
     customers,
+    demo,
     ingestion,
     inventory,
     logistics,
+    mcp_dev,
     products,
     public_logistics,
+    public_system,
     purchase_orders,
     reorder,
     returns,
@@ -29,6 +35,7 @@ Base.metadata.create_all(bind=engine)
 app = FastAPI(title="IntelliFlow API", version="1.0.0")
 app.state.internal_mcp = InternalMCPServer()
 app.state.agent_scheduler = build_default_scheduler(app.state.internal_mcp)
+app_config = get_app_config()
 
 @app.on_event("startup")
 def startup_firebase():
@@ -44,18 +51,15 @@ def shutdown_scheduler():
 # CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
-        "http://localhost:3001",
-        "http://127.0.0.1:3001",
-    ],
+    allow_origins=app_config.cors_origins or [],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 # Include routers
+app.include_router(public_system.router, tags=["public-system"])
+app.include_router(demo.router)
 app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
 app.include_router(products.router, prefix="/api/products", tags=["products"])
 app.include_router(sales.router, prefix="/api/sales", tags=["sales"])
@@ -70,13 +74,12 @@ app.include_router(logistics.router, prefix="/api", tags=["logistics"])
 app.include_router(public_logistics.router, prefix="/public/logistics", tags=["public-logistics"])
 app.include_router(analytics.router, prefix="/api/analytics", tags=["analytics"])
 app.include_router(ai_copilot.router, prefix="/api/ai", tags=["ai"])
+app.include_router(ai_copilot.public_router)
 app.include_router(inventory.router, prefix="/api", tags=["inventory"])
 app.include_router(ingestion.router, tags=["ingestion"])
+if os.getenv("ENABLE_MCP_DEV_ENDPOINTS", "").lower() == "true":
+    app.include_router(mcp_dev.router)
 
 @app.get("/")
 async def root():
     return {"message": "IntelliFlow API", "status": "running"}
-
-@app.get("/health")
-async def health():
-    return {"status": "healthy"}

@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { StatusBar } from 'expo-status-bar';
 import {
   ActivityIndicator,
@@ -10,26 +11,32 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import {
+  createUserWithEmailAndPassword,
+  sendPasswordResetEmail,
+  signInWithEmailAndPassword,
+  signOut,
+  updateProfile,
+} from 'firebase/auth';
 
-import { api } from './api';
+import { api, demoBootstrap, demoLogin, getPublicAppConfig, healthCheck } from './api';
+import { getLoginErrorMessage, getRegisterErrorMessage, getResetPasswordErrorMessage } from './authMessages';
+import IntelliFlowLogo from './components/brand/IntelliFlowLogo';
+import MobileHeader from './components/layout/MobileHeader';
+import MobileNavigationTracker from './components/navigation/MobileNavigationTracker';
+import AppButton from './components/ui/AppButton';
+import AppCard from './components/ui/AppCard';
+import { getApiBaseUrl } from './config/api';
+import { previewData } from './data/previewData';
+import { auth, firebaseConfigReady } from './firebase';
+import { getNavigationItemByRoute, navigationItems } from './navigation/navigationConfig';
+import LoadingScreen from './screens/LoadingScreen';
+import ServiceUnavailableScreen from './screens/ServiceUnavailableScreen';
+import { getAppTheme, responsiveFont, responsiveLineHeight } from './theme/theme';
 
-const theme = {
-  bg: '#07111f',
-  panel: '#0d1728',
-  panelSoft: '#122139',
-  border: 'rgba(180, 202, 255, 0.12)',
-  text: '#f4f7ff',
-  textMuted: 'rgba(244, 247, 255, 0.66)',
-  textSoft: 'rgba(244, 247, 255, 0.42)',
-  accent: '#ef8f34',
-  accentSoft: '#f4d95d',
-  success: '#49c98b',
-  danger: '#ef6a6a',
-  chip: '#d9f56b',
-  chipText: '#06101e',
-};
-
-const DEFAULT_API_URL = 'http://127.0.0.1:8000';
+const THEME_STORAGE_KEY = 'intelliflow-mobile-theme';
+let theme = getAppTheme('dark');
+let styles = createStyles(theme);
 
 const SCREENS = [
   { key: 'dashboard', label: 'Dashboard' },
@@ -42,19 +49,29 @@ const SCREENS = [
   { key: 'logistics', label: 'Logistics' },
   { key: 'compliance', label: 'Compliance' },
   { key: 'copilot', label: 'AI Copilot' },
+  { key: 'plans', label: 'Plans' },
+  { key: 'account', label: 'Profile' },
   { key: 'recommendations', label: 'Recommendations' },
   { key: 'alerts', label: 'Alerts' },
   { key: 'manufacturing', label: 'Manufacturing' },
 ];
 
-const PLANS = ['FREE', 'PRO', 'BOOST'];
+const PRIMARY_TABS = [
+  { key: 'dashboard', label: 'Overview', icon: '[]' },
+  { key: 'products', label: 'Items', icon: '::' },
+  { key: 'inventory', label: 'Home', icon: '()' },
+  { key: 'logistics', label: 'Shipping', icon: '>>' },
+  { key: 'copilot', label: 'Copilot', icon: '**' },
+];
+
+const PLANS = ['FREE', 'PREMIUM', 'BOOST'];
 
 const COPILOT_PROMPTS = [
   'What products are low on stock?',
   'What are my best-selling products this week?',
   'Which products are leaking profit due to returns?',
-  'Are any international shipments delayed?',
-  'What does Malaysian customs law say about this shipment?',
+  'Any delayed shipments?',
+  'What does Malaysian customs law say about import documentation?',
 ];
 
 function todayIso() {
@@ -91,25 +108,105 @@ function maybeNumber(value) {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-function ActionButton({ title, onPress, tone = 'primary', disabled = false }) {
+const isValidEmail = (value) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+const isValidPassword = (value) =>
+  value.length >= 8 && /[A-Z]/.test(value) && /[a-z]/.test(value) && /\d/.test(value);
+
+function toDisplayPlan(plan) {
+  if ((plan || '').toUpperCase() === 'PRO') {
+    return 'PREMIUM';
+  }
+  return plan || 'FREE';
+}
+
+function summarizeFlow(flow) {
+  const features = flow?.geojson?.features || [];
+  return {
+    ports: features.filter((item) => item?.properties?.kind === 'malaysia_port'),
+    lanes: features.filter((item) => item?.properties?.kind === 'shipping_lane'),
+    clusters: features.filter((item) => item?.properties?.kind === 'vessel_cluster'),
+  };
+}
+
+function AppBackdrop() {
+  return <View pointerEvents="none" style={styles.backdrop} />;
+}
+
+function ScreenTopBar({ title, leftLabel = '<', rightLabel = '...', onLeftPress, onRightPress }) {
   return (
-    <Pressable
-      onPress={onPress}
-      disabled={disabled}
-      style={[
-        styles.button,
-        tone === 'secondary' ? styles.buttonSecondary : styles.buttonPrimary,
-        disabled && styles.buttonDisabled,
-      ]}
-    >
-      <Text style={[styles.buttonText, tone === 'secondary' && styles.buttonSecondaryText]}>{title}</Text>
-    </Pressable>
+    <View style={styles.screenTopBar}>
+      <Pressable onPress={onLeftPress} style={styles.screenTopBarButton}>
+        <Text style={styles.screenTopBarButtonText}>{leftLabel}</Text>
+      </Pressable>
+      <Text style={styles.screenTopBarTitle}>{title}</Text>
+      <Pressable onPress={onRightPress} style={styles.screenTopBarButton}>
+        <Text style={styles.screenTopBarButtonText}>{rightLabel}</Text>
+      </Pressable>
+    </View>
   );
+}
+
+function AppShowcaseCard({ title, body, accent = 'orange', children }) {
+  const onDarkSurface = theme.mode === 'dark' || accent === 'blue';
+  return (
+    <View style={[styles.showcaseCard, accent === 'blue' && styles.showcaseCardBlue]}>
+      <View style={styles.showcaseGlow} />
+      <Text style={[styles.showcaseTitle, onDarkSurface && styles.showcaseTitleOnDark]}>{title}</Text>
+      {body ? <Text style={[styles.showcaseBody, onDarkSurface && styles.showcaseBodyOnDark]}>{body}</Text> : null}
+      {children}
+    </View>
+  );
+}
+
+function ProductTile({ product }) {
+  return (
+    <View style={styles.productTile}>
+      <Text style={styles.productTileCategory}>{product.category || 'General'}</Text>
+      <View style={styles.productVisualWrap}>
+        <View style={styles.productVisual} />
+      </View>
+      <Text style={styles.productTileSku}>{product.sku}</Text>
+        <Text style={styles.productTileName}>{product.name}</Text>
+      <View style={styles.productTileFooter}>
+        <Text style={[styles.productTilePrice, theme.mode !== 'dark' && styles.productTilePriceLight]}>{money(product.price)}</Text>
+        <View
+          style={[
+            styles.productTileStockDot,
+            product.current_stock <= product.min_stock_threshold && styles.productTileStockDotWarn,
+          ]}
+        />
+      </View>
+    </View>
+  );
+}
+
+function BottomTabBar({ activeScreen, onSelect }) {
+  return (
+    <View style={styles.bottomTabShell}>
+      {PRIMARY_TABS.map((tab) => {
+        const active = tab.key === activeScreen;
+        return (
+          <Pressable
+            key={tab.key}
+            onPress={() => onSelect(tab.key)}
+            style={[styles.bottomTabItem, active && styles.bottomTabItemActive]}
+          >
+            <Text style={[styles.bottomTabIcon, active && styles.bottomTabIconActive]}>{tab.icon}</Text>
+            <Text style={[styles.bottomTabLabel, active && styles.bottomTabLabelActive]}>{tab.label}</Text>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
+function ActionButton({ title, onPress, tone = 'primary', disabled = false }) {
+  return <AppButton title={title} onPress={onPress} variant={tone === 'secondary' ? 'secondary' : 'primary'} disabled={disabled} theme={theme} />;
 }
 
 function Panel({ title, subtitle, right, children }) {
   return (
-    <View style={styles.panel}>
+    <AppCard variant={theme.mode === 'dark' ? 'dark' : 'default'} size="md" style={styles.panel} theme={theme}>
       {(title || subtitle || right) ? (
         <View style={styles.panelHeader}>
           <View style={styles.panelHeaderCopy}>
@@ -120,7 +217,7 @@ function Panel({ title, subtitle, right, children }) {
         </View>
       ) : null}
       {children}
-    </View>
+    </AppCard>
   );
 }
 
@@ -133,18 +230,21 @@ function MetricCard({ label, value, tone = 'default' }) {
   );
 }
 
-function Chip({ label, active = false, tone = 'default', onPress }) {
+function Chip({ label, active = false, tone = 'default', onPress, variant = 'default' }) {
+  const isAuth = variant === 'auth';
   return (
     <Pressable
       onPress={onPress}
       style={[
         styles.chip,
+        isAuth && styles.authChip,
         active && styles.chipActive,
+        active && isAuth && styles.authChipActive,
         tone === 'warning' && styles.chipWarning,
         tone === 'success' && styles.chipSuccess,
       ]}
     >
-      <Text style={[styles.chipText, active && styles.chipTextActive]}>{label}</Text>
+      <Text style={[styles.chipText, isAuth && styles.authChipText, active && styles.chipTextActive, active && isAuth && styles.authChipTextActive]}>{label}</Text>
     </Pressable>
   );
 }
@@ -158,20 +258,48 @@ function InlineValue({ label, value }) {
   );
 }
 
-function Field({ label, value, onChangeText, placeholder, keyboardType = 'default', multiline = false }) {
+function Field({
+  label,
+  value,
+  onChangeText,
+  placeholder,
+  keyboardType = 'default',
+  multiline = false,
+  secureTextEntry = false,
+  variant = 'default',
+}) {
+  const isAuth = variant === 'auth';
   return (
     <View style={styles.fieldWrap}>
-      <Text style={styles.fieldLabel}>{label}</Text>
+      <Text style={[styles.fieldLabel, isAuth && styles.authFieldLabel]}>{label}</Text>
       <TextInput
         value={value}
         onChangeText={onChangeText}
         placeholder={placeholder}
-        placeholderTextColor={theme.textSoft}
+        placeholderTextColor={isAuth ? 'rgba(255,255,255,0.34)' : theme.textSoft}
         keyboardType={keyboardType}
         multiline={multiline}
-        style={[styles.input, multiline && styles.inputMultiline]}
+        secureTextEntry={secureTextEntry}
+        style={[styles.input, isAuth && styles.authInput, multiline && styles.inputMultiline]}
       />
     </View>
+  );
+}
+
+function AuthActionButton({ title, onPress, secondary = false, disabled = false }) {
+  return (
+    <Pressable
+      onPress={onPress}
+      disabled={disabled}
+      style={({ pressed }) => [
+        styles.authActionButton,
+        secondary ? styles.authActionButtonSecondary : styles.authActionButtonPrimary,
+        disabled && styles.buttonDisabled,
+        pressed && !disabled && styles.authActionButtonPressed,
+      ]}
+    >
+      <Text style={[styles.authActionButtonText, secondary && styles.authActionButtonTextSecondary]}>{title}</Text>
+    </Pressable>
   );
 }
 
@@ -221,46 +349,218 @@ function PlanNotice({ requiredPlan, body }) {
   );
 }
 
-function SetupScreen({ draft, setDraft, error, loading, onConnect }) {
+function SetupScreen({
+  draft,
+  setDraft,
+  error,
+  status,
+  loading,
+  authMode,
+  setAuthMode,
+  onConnect,
+  onDemoLogin,
+  appConfig,
+  themeMode,
+  showModeOrb,
+  onToggleTheme,
+}) {
+  const isWelcome = authMode === 'welcome';
+  const isRegister = authMode === 'register';
+  const isReset = authMode === 'reset';
+  const isLogin = authMode === 'login';
+
   return (
     <ScrollView contentContainerStyle={styles.setupWrap}>
-      <View style={styles.heroPanel}>
-        <Text style={styles.heroEyebrow}>IntelliFlow Mobile</Text>
-        <Text style={styles.heroTitle}>Operational control for the full supply-chain stack.</Text>
-        <Text style={styles.heroBody}>
-          This mobile shell talks to the same FastAPI backend as the web app. Paste a valid Firebase bearer token so the app can call your secured APIs.
-        </Text>
+      <View style={styles.authScreen}>
+        <View style={styles.authBackgroundGlowPrimary} />
+        <View style={styles.authBackgroundGlowSecondary} />
+        <View style={styles.authGlassPaneOne} />
+        <View style={styles.authGlassPaneTwo} />
+
+        <View style={styles.authTopRow}>
+          <View />
+          {isWelcome ? (
+            <View />
+          ) : (
+            <Pressable onPress={() => setAuthMode(isRegister ? 'login' : 'register')} style={styles.authTopLink}>
+              <Text style={styles.authTopLinkText}>{isRegister ? 'Sign in' : 'Sign up'}</Text>
+            </Pressable>
+          )}
+        </View>
+
+        {isWelcome ? (
+          <View style={styles.authWelcomeShell}>
+            <View style={styles.authWelcomeSpacer} />
+            <View style={styles.authWelcomeFooter}>
+              <IntelliFlowLogo size="sm" variant="light" />
+              <Text style={styles.authWelcomeHeadline}>AI inventory, logistics, and compliance control for modern operations</Text>
+            </View>
+          </View>
+        ) : (
+          <View style={styles.authFormHero}>
+            <View style={styles.authLogoStage}>
+              <View style={styles.authLogoPlateBack} />
+              <View style={styles.authLogoPlateFront}>
+                <IntelliFlowLogo size="md" centerAligned variant="light" />
+              </View>
+            </View>
+          </View>
+        )}
+
+        <View style={[styles.authCard, isWelcome ? styles.authCardWelcome : styles.authCardForm]}>
+          {isWelcome ? (
+            <>
+              <Text style={styles.authWelcomeBody}>
+                Expertise meets precision for inventory, logistics, compliance, and supply-flow intelligence.
+              </Text>
+              <View style={styles.authWelcomeActions}>
+                <AuthActionButton title="Sign up" onPress={() => setAuthMode('register')} />
+                <AuthActionButton title="I have an account" onPress={() => setAuthMode('login')} secondary />
+              </View>
+              {appConfig?.demo_mode_enabled && appConfig?.auth_mode === 'hybrid' ? (
+                <Pressable onPress={onDemoLogin} style={styles.authInlineMetaButton}>
+                  <Text style={styles.authInlineMetaButtonText}>Continue demo workspace</Text>
+                </Pressable>
+              ) : null}
+            </>
+          ) : (
+            <>
+              <Text style={styles.authCardTitle}>
+                {isRegister ? 'Sign up for IntelliFlow' : isReset ? 'Reset your password' : 'Sign in to IntelliFlow'}
+              </Text>
+              <Text style={styles.authCardSubtitle}>
+                {isRegister
+                  ? 'Create the same Firebase-backed account you use on web and mobile.'
+                  : isReset
+                    ? 'Enter your email and we will send you a reset link.'
+                    : 'Use your IntelliFlow account to continue.'}
+              </Text>
+              {!firebaseConfigReady ? (
+                <View style={styles.errorBanner}>
+                  <Text style={styles.errorText}>
+                    Firebase mobile config is missing. Run `npm run generate:firebase-config` in `mobile/` after adding Firebase env values.
+                  </Text>
+                </View>
+              ) : null}
+              {isRegister ? (
+                <Field
+                  label="Full name"
+                  value={draft.fullName}
+                  onChangeText={(value) => setDraft((current) => ({ ...current, fullName: value }))}
+                  placeholder="Enter your full name"
+                  variant="auth"
+                />
+              ) : null}
+              <Field
+                label="Email address"
+                value={draft.email}
+                onChangeText={(value) => setDraft((current) => ({ ...current, email: value }))}
+                placeholder="Enter your email"
+                variant="auth"
+              />
+              {!isReset ? (
+                <Field
+                  label="Password"
+                  value={draft.password}
+                  onChangeText={(value) => setDraft((current) => ({ ...current, password: value }))}
+                  placeholder={isRegister ? 'Create password' : 'Enter your password'}
+                  secureTextEntry
+                  variant="auth"
+                />
+              ) : null}
+              {isRegister ? (
+                <Field
+                  label="Confirm password"
+                  value={draft.confirmPassword}
+                  onChangeText={(value) => setDraft((current) => ({ ...current, confirmPassword: value }))}
+                  placeholder="Confirm your password"
+                  secureTextEntry
+                  variant="auth"
+                />
+              ) : null}
+              {isLogin ? (
+                <Pressable onPress={() => setAuthMode('reset')} style={styles.forgotPasswordLink}>
+                  <Text style={styles.forgotPasswordText}>Forgot password?</Text>
+                </Pressable>
+              ) : null}
+              <View style={styles.fieldWrap}>
+                <Text style={[styles.fieldLabel, styles.authFieldLabel]}>Requested plan</Text>
+                <View style={styles.chipRow}>
+                  {PLANS.map((plan) => (
+                    <Chip
+                      key={plan}
+                      label={plan}
+                      active={draft.plan === plan}
+                      variant="auth"
+                      onPress={() => setDraft((current) => ({ ...current, plan }))}
+                    />
+                  ))}
+                </View>
+              </View>
+              <ErrorBanner message={error} />
+              {status ? (
+                <View style={styles.successBanner}>
+                  <Text style={styles.successText}>{status}</Text>
+                </View>
+              ) : null}
+              <AuthActionButton
+                title={
+                  loading
+                    ? isRegister
+                      ? 'Creating account...'
+                      : isReset
+                        ? 'Sending reset link...'
+                        : 'Login...'
+                    : isRegister
+                      ? 'Continue'
+                      : isReset
+                        ? 'Send reset link'
+                        : 'Login'
+                }
+                onPress={onConnect}
+                disabled={loading || !firebaseConfigReady}
+              />
+              <Pressable onPress={() => setAuthMode('welcome')} style={styles.authBackLink}>
+                <Text style={styles.authBackLinkText}>Back to startup</Text>
+              </Pressable>
+              {isRegister ? (
+                <Text style={styles.authBottomMeta}>Already have an account? Use Sign in.</Text>
+              ) : isReset ? (
+                <Text style={styles.authBottomMeta}>Remembered your password? Go back and sign in.</Text>
+              ) : (
+                <Text style={styles.authBottomMeta}>New to IntelliFlow? Choose Sign up and use the same account on web and mobile.</Text>
+              )}
+            </>
+          )}
+        </View>
+      </View>
+    </ScrollView>
+  );
+}
+
+function PreviewModeScreen({ onRetry }) {
+  return (
+    <ScrollView contentContainerStyle={styles.setupWrap}>
+      <View style={styles.landingHeader}>
+        <Text style={styles.landingBrand}>IntelliFlow</Text>
       </View>
 
-      <Panel title="Session setup" subtitle="Use a reachable API host for your device or simulator.">
-        <Field
-          label="API base URL"
-          value={draft.apiUrl}
-          onChangeText={(value) => setDraft((current) => ({ ...current, apiUrl: value }))}
-          placeholder={DEFAULT_API_URL}
-        />
-        <Field
-          label="Bearer token"
-          value={draft.token}
-          onChangeText={(value) => setDraft((current) => ({ ...current, token: value }))}
-          placeholder="Firebase ID token"
-          multiline
-        />
-        <View style={styles.fieldWrap}>
-          <Text style={styles.fieldLabel}>Requested plan</Text>
-          <View style={styles.chipRow}>
-            {PLANS.map((plan) => (
-              <Chip
-                key={plan}
-                label={plan}
-                active={draft.plan === plan}
-                onPress={() => setDraft((current) => ({ ...current, plan }))}
-              />
-            ))}
-          </View>
+      <Panel title="Preview Mode" subtitle="Backend unavailable. This view is sample data only.">
+        <View style={styles.metricGrid}>
+          <MetricCard label="Products" value={String(previewData.inventorySummary.total_products)} />
+          <MetricCard label="Orders" value={String(previewData.inventorySummary.total_orders)} />
+          <MetricCard label="Low-stock alerts" value={String(previewData.inventorySummary.low_stock_alerts)} tone="accent" />
+          <MetricCard label="Ports monitored" value={String(previewData.logistics.monitored_ports)} />
         </View>
-        <ErrorBanner message={error} />
-        <ActionButton title={loading ? 'Connecting...' : 'Connect mobile app'} onPress={onConnect} disabled={loading} />
+        <Text style={styles.rowBody}>
+          {previewData.copilot.answer}
+        </Text>
+        <View style={styles.listBlock}>
+          {previewData.copilot.recommendations.map((item) => (
+            <Text key={item} style={styles.listItem}>• {item}</Text>
+          ))}
+        </View>
+        <ActionButton title="Retry service connection" onPress={onRetry} />
       </Panel>
     </ScrollView>
   );
@@ -269,6 +569,7 @@ function SetupScreen({ draft, setDraft, error, loading, onConnect }) {
 function DashboardScreen({ session }) {
   const [dashboard, setDashboard] = useState(null);
   const [recommendations, setRecommendations] = useState([]);
+  const [delayed, setDelayed] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -276,12 +577,14 @@ function DashboardScreen({ session }) {
     setLoading(true);
     setError('');
     try {
-      const [dashboardData, recommendationData] = await Promise.all([
+      const [dashboardData, recommendationData, delayedData] = await Promise.all([
         api.getDashboard(session),
         api.getRecommendations(session, { limit: 4 }),
+        api.getDelayedShipments(session).catch(() => []),
       ]);
       setDashboard(dashboardData);
       setRecommendations(recommendationData);
+      setDelayed(delayedData);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -299,38 +602,48 @@ function DashboardScreen({ session }) {
 
   return (
     <View style={styles.screenStack}>
-      <Panel
-        title="Operational dashboard"
-        subtitle="Revenue, order flow, and stock pressure across the same ledger-backed backend used on web."
-        right={<ActionButton title="Refresh" tone="secondary" onPress={load} />}
+      <ScreenTopBar title="Overview" leftLabel="<" rightLabel=">" />
+      <AppShowcaseCard
+        title={delayed.length ? 'Delivery is delayed' : 'Delivery is stable'}
+        body={delayed.length ? 'Delay pressure is affecting part of your active flow.' : 'Orders, stock, and shipment flow are moving normally.'}
       >
         <ErrorBanner message={error} />
         {dashboard ? (
           <>
+            <View style={styles.routePreview}>
+              <View style={styles.routeNodeOrange} />
+              <View style={styles.routePath} />
+              <View style={styles.routeNodeBlue} />
+              <View style={styles.routeNodeOrangeSmall} />
+            </View>
             <View style={styles.metricGrid}>
               <MetricCard label="Revenue" value={money(dashboard.total_revenue)} tone="accent" />
               <MetricCard label="Orders" value={String(dashboard.total_orders)} />
               <MetricCard label="Products" value={String(dashboard.total_products)} />
               <MetricCard label="Low stock" value={String(dashboard.low_stock_alerts)} />
             </View>
-            <Text style={styles.sectionLabel}>Top sellers</Text>
-            {dashboard.top_sellers?.length ? (
-              dashboard.top_sellers.map((item) => (
-                <View key={item.product_id} style={styles.rowCard}>
-                  <View style={styles.rowCardMain}>
-                    <Text style={styles.rowTitle}>{item.product_name}</Text>
-                    <Text style={styles.rowBody}>
-                      {item.total_quantity} units • {money(item.total_revenue)} revenue
-                    </Text>
-                  </View>
-                  <Chip label={`${item.total_sales} sales`} />
-                </View>
-              ))
-            ) : (
-              <EmptyState title="No sales yet" body="Top sellers will appear after commercial activity is recorded." />
-            )}
           </>
         ) : null}
+      </AppShowcaseCard>
+
+      <Panel title="Order history" subtitle="Top-selling movement in a compact operational layout." right={<ActionButton title="Refresh" tone="secondary" onPress={load} />}>
+        {dashboard?.top_sellers?.length ? (
+          dashboard.top_sellers.slice(0, 3).map((item) => (
+            <View key={item.product_id} style={styles.orderHistoryCard}>
+              <View style={styles.orderHistoryVisual} />
+              <View style={styles.rowCardMain}>
+                <Text style={styles.rowTitle}>{item.product_name}</Text>
+                <Text style={styles.rowBody}>
+                  {item.total_quantity} units • {money(item.total_revenue)}
+                </Text>
+                <Text style={styles.rowBodyMuted}>{item.total_sales} completed sales</Text>
+              </View>
+              <Chip label="Delivered" active />
+            </View>
+          ))
+        ) : (
+          <EmptyState title="No sales yet" body="Top sellers will appear after commercial activity is recorded." />
+        )}
       </Panel>
 
       <Panel title="Agent recommendations" subtitle="Recent MCP-backed scans available on mobile.">
@@ -413,6 +726,31 @@ function ProductsScreen({ session }) {
 
   return (
     <View style={styles.screenStack}>
+      <ScreenTopBar title="Quoting" leftLabel="<" rightLabel="..." />
+      <Text style={styles.inventoryHeadline}>Items</Text>
+      <View style={styles.filterRow}>
+        <View style={styles.filterBoxCompact}>
+          <Text style={styles.filterBoxText}>Q</Text>
+        </View>
+        <View style={styles.filterBoxCompact}>
+          <Text style={styles.filterBoxText}>::</Text>
+        </View>
+        <View style={styles.filterBoxWide}>
+          <Text style={styles.filterBoxText}>Category</Text>
+        </View>
+        <View style={styles.filterBoxWide}>
+          <Text style={styles.filterBoxText}>Suppliers</Text>
+        </View>
+      </View>
+
+      {products.length ? (
+        <View style={styles.productGrid}>
+          {products.slice(0, 6).map((product) => (
+            <ProductTile key={product.id} product={product} />
+          ))}
+        </View>
+      ) : null}
+
       <Panel title="Products" subtitle="Create catalogue records and opening stock mirrored into the stock ledger.">
         <ErrorBanner message={error} />
         <View style={styles.metricGrid}>
@@ -460,6 +798,12 @@ function ProductsScreen({ session }) {
           <EmptyState title="No products" body="Create a product to unlock inventory and order workflows." />
         )}
       </Panel>
+
+      <View style={styles.ctaDock}>
+        <Text style={styles.ctaDockIcon}>[]</Text>
+        <Text style={styles.ctaDockText}>Create quote</Text>
+        <Text style={styles.ctaDockArrow}>{'>>'}</Text>
+      </View>
     </View>
   );
 }
@@ -585,8 +929,60 @@ function InventoryScreen({ session }) {
 
   return (
     <View style={styles.screenStack}>
-      <Panel title="Inventory insights" subtitle="Ledger-first stock, reorder pressure, and warehouse intake.">
+      <ScreenTopBar title="Inventory" leftLabel="##" rightLabel="..." />
+      <Text style={styles.inventoryHeadline}>Inventory</Text>
+      <View style={styles.filterRow}>
+        <View style={styles.filterBoxCompact}>
+          <Text style={styles.filterBoxText}>Q</Text>
+        </View>
+        <View style={styles.filterBoxWide}>
+          <Text style={styles.filterBoxText}>Month</Text>
+        </View>
+        <View style={styles.filterBoxAddress}>
+          <Text style={styles.filterBoxText}>Storage: {warehouses[0]?.name || 'Main Warehouse'}</Text>
+        </View>
+      </View>
+
+      <AppShowcaseCard title="Orders" accent="blue">
         <ErrorBanner message={error} />
+        <View style={styles.ordersBoard}>
+          <View style={styles.ordersBoardColumn}>
+            <Text style={styles.ordersBoardValue}>{String(transactions.length)}</Text>
+            <Text style={styles.ordersBoardLabel}>Transactions</Text>
+          </View>
+          <View style={styles.ordersBoardColumn}>
+            <Text style={styles.ordersBoardValue}>{String(reorderSuggestions.length)}</Text>
+            <Text style={styles.ordersBoardLabel}>In progress</Text>
+          </View>
+          <View style={styles.ordersBoardColumn}>
+            <Text style={styles.ordersBoardValue}>{String(risks.length)}</Text>
+            <Text style={styles.ordersBoardLabel}>Returns risk</Text>
+          </View>
+          <View style={styles.ordersBoardColumn}>
+            <Text style={styles.ordersBoardValue}>{String(products.length)}</Text>
+            <Text style={styles.ordersBoardLabel}>Completed</Text>
+          </View>
+        </View>
+        <View style={styles.ordersBars}>
+          <View style={[styles.ordersBar, styles.ordersBarShort]} />
+          <View style={[styles.ordersBar, styles.ordersBarMid]} />
+          <View style={[styles.ordersBar, styles.ordersBarTall]} />
+        </View>
+      </AppShowcaseCard>
+
+      <AppShowcaseCard title="Stock">
+        <View style={styles.stockLegendWrap}>
+          <View style={styles.stockLegendColumn}>
+            <Text style={styles.stockLegendItem}>In stock</Text>
+            <Text style={styles.stockLegendItem}>Out of stock</Text>
+            <Text style={styles.stockLegendItem}>Low stock</Text>
+            <Text style={styles.stockLegendItem}>Dead stock</Text>
+          </View>
+          <View style={styles.stockDonut} />
+        </View>
+      </AppShowcaseCard>
+
+      <Panel title="Inventory insights" subtitle="Ledger-first stock, reorder pressure, and warehouse intake.">
         <View style={styles.metricGrid}>
           <MetricCard label="Low stock risks" value={String(risks.length)} tone="accent" />
           <MetricCard label="Warehouses" value={String(warehouses.length)} />
@@ -856,7 +1252,7 @@ function SalesScreen({ session, sessionPlan }) {
       </Panel>
 
       {sessionPlan === 'FREE' ? (
-        <PlanNotice requiredPlan="PRO" body="AI-ranked best sellers and sales velocity shifts are locked on Free." />
+        <PlanNotice requiredPlan="PREMIUM" body="AI-ranked best sellers and sales velocity shifts are locked on Free." />
       ) : (
         <Panel title="Sales insights">
           {insight ? <JsonPreview data={insight} /> : <EmptyState title="No insight" body="Run a sales query after data loads." />}
@@ -1410,7 +1806,7 @@ function ReturnsScreen({ session, sessionPlan }) {
       </Panel>
 
       {sessionPlan === 'FREE' ? (
-        <PlanNotice requiredPlan="PRO" body="Return-adjusted profit analysis and AI leakage insights require Pro." />
+        <PlanNotice requiredPlan="PREMIUM" body="Return-adjusted profit analysis and AI leakage insights require Premium." />
       ) : (
         <Panel title="AI leakage insight">{aiInsight ? <JsonPreview data={aiInsight} /> : null}</Panel>
       )}
@@ -1503,6 +1899,7 @@ function LogisticsScreen({ session, sessionPlan }) {
   const [shipments, setShipments] = useState([]);
   const [delayed, setDelayed] = useState([]);
   const [routes, setRoutes] = useState([]);
+  const [publicFlow, setPublicFlow] = useState(null);
   const [delayImpact, setDelayImpact] = useState(null);
   const [recommendations, setRecommendations] = useState([]);
   const [error, setError] = useState('');
@@ -1530,14 +1927,20 @@ function LogisticsScreen({ session, sessionPlan }) {
     setLoading(true);
     setError('');
     try {
-      const [shipmentData, delayedData, routeData] = await Promise.all([
+      const [shipmentData, delayedData, routeData, publicFlowData] = await Promise.all([
         api.getShipments(session),
         api.getDelayedShipments(session),
         api.getRoutes(session),
+        api.getPublicIndoPacificShipFlow(session, {
+          include_ports: true,
+          include_routes: true,
+          include_vessel_clusters: true,
+        }),
       ]);
       setShipments(shipmentData);
       setDelayed(delayedData);
       setRoutes(routeData);
+      setPublicFlow(publicFlowData);
       if (sessionPlan === 'BOOST') {
         setRecommendations(await api.getRecommendations(session, { domain: 'logistics', limit: 6 }));
       } else {
@@ -1641,15 +2044,72 @@ function LogisticsScreen({ session, sessionPlan }) {
     return <LoadingBlock />;
   }
 
+  const flowSummary = summarizeFlow(publicFlow);
+
   return (
     <View style={styles.screenStack}>
-      <Panel title="Logistics control tower" subtitle="Shipment management plus delayed-shipment impact analysis.">
+      <ScreenTopBar title="Overview" leftLabel="<" rightLabel=">" />
+      <AppShowcaseCard title="Delivery is delayed" body="Generalized maritime flow and active shipment pressure in one control tower panel.">
         <ErrorBanner message={error} />
+        <View style={styles.routePreviewLarge}>
+          <View style={styles.routeMapGlowLeft} />
+          <View style={styles.routeMapGlowRight} />
+          <View style={styles.routeNodeOrange} />
+          <View style={styles.routePathWide} />
+          <View style={styles.routeNodeBlue} />
+          <View style={styles.routeNodeOrangeSmall} />
+        </View>
         <View style={styles.metricGrid}>
           <MetricCard label="Shipments" value={String(shipments.length)} />
           <MetricCard label="Delayed" value={String(delayed.length)} tone="accent" />
           <MetricCard label="Routes" value={String(routes.length)} />
         </View>
+      </AppShowcaseCard>
+
+      <Panel
+        title="Indo-Pacific ship flow"
+        subtitle="This mobile view uses the same public logistics intelligence endpoint as the web experience."
+        right={<Chip label={publicFlow?.is_live ? 'Live maritime flow' : 'Preview ship-flow model'} tone={publicFlow?.is_live ? 'success' : 'warning'} />}
+      >
+        {publicFlow ? (
+          <>
+            <View style={styles.metricGrid}>
+              <MetricCard label="MY ports" value={String(publicFlow.summary?.malaysian_ports_monitored || 0)} tone="accent" />
+              <MetricCard label="Corridors" value={String(publicFlow.summary?.routes_monitored || 0)} />
+              <MetricCard label="Avg pressure" value={String(publicFlow.summary?.average_malaysia_port_pressure || 0)} />
+              <MetricCard label="Flow" value={String(publicFlow.summary?.estimated_regional_flow_intensity || 0)} />
+            </View>
+            <Text style={styles.rowBodyMuted}>
+              Source: {publicFlow.source} • Updated {displayDate(publicFlow.last_updated)}
+            </Text>
+            <Text style={styles.sectionLabel}>Malaysian port pressure</Text>
+            {flowSummary.ports.slice(0, 5).map((feature) => (
+              <View key={feature.properties.port_code} style={styles.rowCard}>
+                <View style={styles.rowCardMain}>
+                  <Text style={styles.rowTitle}>{feature.properties.port_name}</Text>
+                  <Text style={styles.rowBody}>
+                    {feature.properties.state} • Waiting {feature.properties.vessels_waiting} • Delay {feature.properties.average_delay_hours}h
+                  </Text>
+                </View>
+                <Chip label={feature.properties.pressure_status} tone={['HIGH', 'CRITICAL'].includes(feature.properties.pressure_status) ? 'warning' : 'success'} />
+              </View>
+            ))}
+            <Text style={styles.sectionLabel}>Generalized corridors</Text>
+            {flowSummary.lanes.slice(0, 4).map((feature) => (
+              <View key={feature.properties.route_name} style={styles.rowCard}>
+                <View style={styles.rowCardMain}>
+                  <Text style={styles.rowTitle}>{feature.properties.route_name}</Text>
+                  <Text style={styles.rowBody}>
+                    {feature.properties.origin_region} to {feature.properties.destination_region} • Estimated vessels {feature.properties.estimated_vessel_count}
+                  </Text>
+                </View>
+                <Chip label={feature.properties.risk_level} tone={['HIGH', 'CRITICAL'].includes(feature.properties.risk_level) ? 'warning' : 'default'} />
+              </View>
+            ))}
+          </>
+        ) : (
+          <EmptyState title="No public flow data" body="The public ship-flow endpoint did not return any data." />
+        )}
       </Panel>
 
       {sessionPlan !== 'BOOST' ? (
@@ -1716,7 +2176,7 @@ function LogisticsScreen({ session, sessionPlan }) {
 }
 
 function ComplianceScreen({ session, sessionPlan }) {
-  const [query, setQuery] = useState('What does Malaysian customs law say about this shipment?');
+  const [query, setQuery] = useState('What does Malaysian customs law say about import documentation?');
   const [response, setResponse] = useState(null);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -1740,7 +2200,7 @@ function ComplianceScreen({ session, sessionPlan }) {
   };
 
   if (sessionPlan === 'FREE') {
-    return <PlanNotice requiredPlan="PRO" body="Compliance and document-backed RAG responses are not available on Free." />;
+    return <PlanNotice requiredPlan="PREMIUM" body="Compliance and document-backed RAG responses are not available on Free." />;
   }
 
   return (
@@ -1749,7 +2209,7 @@ function ComplianceScreen({ session, sessionPlan }) {
         <Field label="Compliance question" value={query} onChangeText={setQuery} multiline />
         <View style={styles.chipRow}>
           {[
-            'What does Malaysian customs law say about this shipment?',
+            'What does Malaysian customs law say about import documentation?',
             'Check road transport compliance for this load.',
             'Summarize tax measures relevant to this transaction.',
             'What anti-corruption controls should we review?',
@@ -1840,8 +2300,8 @@ function CopilotScreen({ session, sessionPlan }) {
     <View style={styles.screenStack}>
       <Panel title="AI Copilot" subtitle="MCP-backed routing across inventory, sales, returns, logistics, and compliance.">
         <ErrorBanner message={error} />
-        <InlineValue label="Requested plan" value={sessionPlan} />
-        <InlineValue label="Backend plan" value={capabilities?.plan_level || 'Unknown'} />
+        <InlineValue label="Requested plan" value={toDisplayPlan(sessionPlan)} />
+        <InlineValue label="Backend plan" value={toDisplayPlan(capabilities?.plan_level) || 'Unknown'} />
         <Text style={styles.sectionLabel}>Prompt</Text>
         <Field label="Message" value={query} onChangeText={setQuery} multiline />
         <View style={styles.chipRow}>
@@ -1862,6 +2322,62 @@ function CopilotScreen({ session, sessionPlan }) {
 
       <Panel title="Recent recommendations">
         {recommendations.length ? recommendations.map((item) => <RecommendationItem key={item.id} recommendation={item} />) : <EmptyState title="No recommendations" body="No scheduled agent recommendations were returned." />}
+      </Panel>
+    </View>
+  );
+}
+
+function PlansScreen() {
+  const plans = [
+    {
+      name: 'Free',
+      description: 'Inventory starter, basic stock tracking, and limited supply tracking.',
+      features: ['Basic inventory tracking', 'Basic supply tracking', 'Limited stock visibility'],
+    },
+    {
+      name: 'Premium',
+      description: 'Operations intelligence, sales insights, returns analytics, and basic RAG.',
+      features: ['Best product sales insights', 'Returns/profit intelligence', 'RAG agents', 'Advanced analytics'],
+    },
+    {
+      name: 'Boost',
+      description: 'AI control tower, logistics control tower, and advanced MCP/RAG workflows.',
+      features: ['Logistics control tower', 'Advanced MCP/RAG agents', 'Route delay intelligence', 'Supplier and inventory flow optimization'],
+    },
+  ];
+
+  return (
+    <View style={styles.screenStack}>
+      <Panel title="Plans" subtitle="The same commercial structure used across the web workspace.">
+        {plans.map((plan, index) => (
+          <AppCard
+            key={plan.name}
+            variant={index === 0 ? 'muted' : index === 1 ? 'default' : 'dark'}
+            size="md"
+            theme={theme}
+            style={styles.planCard}
+          >
+            <Text style={styles.rowTitle}>{plan.name}</Text>
+            <Text style={styles.rowBody}>{plan.description}</Text>
+            <View style={styles.listBlock}>
+              {plan.features.map((feature) => (
+                <Text key={feature} style={styles.listItem}>• {feature}</Text>
+              ))}
+            </View>
+          </AppCard>
+        ))}
+      </Panel>
+    </View>
+  );
+}
+
+function AccountScreen({ currentUser, sessionPlan }) {
+  return (
+    <View style={styles.screenStack}>
+      <Panel title="Profile" subtitle="Workspace identity and current plan context.">
+        <InlineValue label="Name" value={currentUser?.full_name || 'IntelliFlow user'} />
+        <InlineValue label="Email" value={currentUser?.email || 'Not available'} />
+        <InlineValue label="Plan" value={toDisplayPlan(sessionPlan)} />
       </Panel>
     </View>
   );
@@ -1902,7 +2418,7 @@ function RecommendationsScreen({ session }) {
     <View style={styles.screenStack}>
       <Panel title="Agent recommendations" subtitle="Backend-filtered recommendations produced by scheduled MCP scans.">
         <ErrorBanner message={error} />
-        <InlineValue label="Plan" value={capabilities?.plan_level || 'Unknown'} />
+        <InlineValue label="Plan" value={toDisplayPlan(capabilities?.plan_level) || 'Unknown'} />
         <InlineValue label="Allowed domains" value={(capabilities?.allowed_domains || []).join(', ') || 'None'} />
       </Panel>
 
@@ -2055,7 +2571,7 @@ function RecommendationItem({ recommendation }) {
   );
 }
 
-function ScreenRenderer({ activeScreen, session, sessionPlan }) {
+function ScreenRenderer({ activeScreen, session, sessionPlan, currentUser }) {
   switch (activeScreen) {
     case 'dashboard':
       return <DashboardScreen session={session} />;
@@ -2077,6 +2593,10 @@ function ScreenRenderer({ activeScreen, session, sessionPlan }) {
       return <ComplianceScreen session={session} sessionPlan={sessionPlan} />;
     case 'copilot':
       return <CopilotScreen session={session} sessionPlan={sessionPlan} />;
+    case 'plans':
+      return <PlansScreen />;
+    case 'account':
+      return <AccountScreen currentUser={currentUser} sessionPlan={sessionPlan} />;
     case 'recommendations':
       return <RecommendationsScreen session={session} />;
     case 'alerts':
@@ -2090,130 +2610,1066 @@ function ScreenRenderer({ activeScreen, session, sessionPlan }) {
 
 export default function MobileApp() {
   const [sessionDraft, setSessionDraft] = useState({
-    apiUrl: DEFAULT_API_URL,
-    token: '',
     plan: 'FREE',
+    email: '',
+    password: '',
+    confirmPassword: '',
+    fullName: '',
   });
   const [session, setSession] = useState(null);
   const [currentUser, setCurrentUser] = useState(null);
+  const [appConfig, setAppConfig] = useState(null);
   const [activeScreen, setActiveScreen] = useState('dashboard');
+  const [authMode, setAuthMode] = useState('welcome');
   const [connectError, setConnectError] = useState('');
+  const [connectStatus, setConnectStatus] = useState('');
   const [connecting, setConnecting] = useState(false);
+  const [bootState, setBootState] = useState('loading');
+  const [previewMode, setPreviewMode] = useState(false);
+  const [themeMode, setThemeMode] = useState('dark');
+  const [showModeOrb, setShowModeOrb] = useState(false);
 
   const sessionPlan = session?.plan || 'FREE';
+  theme = getAppTheme(themeMode);
+  styles = createStyles(theme);
+
+  useEffect(() => {
+    AsyncStorage.getItem(THEME_STORAGE_KEY)
+      .then((stored) => {
+        if (stored === 'light' || stored === 'dark') {
+          setThemeMode(stored);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    AsyncStorage.setItem(THEME_STORAGE_KEY, themeMode).catch(() => {});
+  }, [themeMode]);
+
+  useEffect(() => {
+    if (!showModeOrb) {
+      return;
+    }
+    const timer = setTimeout(() => setShowModeOrb(false), 5000);
+    return () => clearTimeout(timer);
+  }, [showModeOrb]);
+
+  const toggleTheme = () => {
+    setThemeMode((current) => (current === 'dark' ? 'light' : 'dark'));
+    setShowModeOrb(true);
+  };
+
+  const startDemoSession = async (baseSessionOverride) => {
+    const apiUrl = baseSessionOverride?.apiUrl || getApiBaseUrl();
+    const publicSession = { apiUrl, plan: 'FREE', token: null, userId: null };
+    await demoBootstrap(publicSession);
+    const demo = await demoLogin(publicSession);
+    const candidate = {
+      apiUrl,
+      token: demo?.access_token,
+      plan: demo?.user?.plan || 'BOOST',
+      userId: demo?.user?.id || null,
+      organizationId: demo?.user?.organization_id || null,
+      isDemo: true,
+    };
+    let me;
+    try {
+      me = await api.getMe(candidate);
+    } catch {
+      me = {
+        id: demo?.user?.id || null,
+        email: demo?.user?.email || 'demo@intelliflow.local',
+        full_name: demo?.user?.name || 'Demo User',
+      };
+    }
+    candidate.userId = me?.id || candidate.userId;
+    setSession(candidate);
+    setCurrentUser(me);
+  };
+
+  const initializeAppSession = async () => {
+    setBootState('loading');
+    setPreviewMode(false);
+    setConnectError('');
+    setConnectStatus('');
+    try {
+      const apiUrl = getApiBaseUrl();
+      const publicSession = { apiUrl, plan: 'FREE', token: null, userId: null };
+      await healthCheck(publicSession);
+      const config = await getPublicAppConfig(publicSession);
+      setAppConfig(config);
+
+      if (config?.demo_mode_enabled && config?.auth_mode === 'demo') {
+        await startDemoSession(publicSession);
+      } else {
+        setSession(null);
+        setCurrentUser(null);
+      }
+      setBootState('ready');
+    } catch (error) {
+      setBootState('unavailable');
+      setSession(null);
+      setCurrentUser(null);
+    }
+  };
+
+  useEffect(() => {
+    initializeAppSession();
+  }, []);
 
   const connect = async () => {
     setConnecting(true);
     setConnectError('');
+    setConnectStatus('');
     try {
+      if (!firebaseConfigReady || !auth) {
+        throw new Error('Firebase mobile config is missing. Add the Firebase web app values, regenerate mobile/firebase.config.json, and restart Expo.');
+      }
+      const apiUrl = getApiBaseUrl();
+      const email = sessionDraft.email.trim();
+      const password = sessionDraft.password;
+
+      if (!isValidEmail(email)) {
+        throw new Error('Enter a valid work email address.');
+      }
+
+      if (authMode === 'register') {
+        if (!isValidPassword(password)) {
+          throw new Error('Password must be 8+ chars with upper, lower, and a number.');
+        }
+        if (password !== sessionDraft.confirmPassword) {
+          throw new Error('Passwords do not match.');
+        }
+      }
+
+      if (authMode === 'reset') {
+        await sendPasswordResetEmail(auth, email);
+        setConnectStatus('Reset link sent. Check your inbox and spam folder for the IntelliFlow recovery email.');
+        return;
+      }
+
+      let credential;
+      if (authMode === 'register') {
+        credential = await createUserWithEmailAndPassword(auth, email, password);
+        if (sessionDraft.fullName.trim()) {
+          await updateProfile(credential.user, { displayName: sessionDraft.fullName.trim() });
+        }
+      } else {
+        credential = await signInWithEmailAndPassword(auth, email, password);
+      }
+
+      const token = await credential.user.getIdToken();
       const candidate = {
-        apiUrl: (sessionDraft.apiUrl || DEFAULT_API_URL).trim(),
-        token: sessionDraft.token.trim(),
+        apiUrl,
+        token,
         plan: sessionDraft.plan,
+        userId: null,
       };
       const me = await api.getMe(candidate);
+      candidate.userId = me?.id || null;
       setSession(candidate);
       setCurrentUser(me);
+      setConnectStatus(authMode === 'register' ? 'Workspace created successfully. Opening your IntelliFlow mobile workspace...' : 'Sign-in successful. Opening your IntelliFlow mobile workspace...');
     } catch (err) {
-      setConnectError(err.message);
+      if (authMode === 'register') {
+        setConnectError(getRegisterErrorMessage(err));
+      } else if (authMode === 'reset') {
+        setConnectError(getResetPasswordErrorMessage(err));
+      } else {
+        setConnectError(getLoginErrorMessage(err));
+      }
     } finally {
       setConnecting(false);
     }
   };
 
-  const disconnect = () => {
+  const continueDemo = async () => {
+    setConnecting(true);
+    setConnectError('');
+    setConnectStatus('');
+    try {
+      await startDemoSession();
+      setConnectStatus('Demo workspace ready.');
+    } catch (err) {
+      setConnectError(err?.message || 'Unable to open demo workspace right now.');
+    } finally {
+      setConnecting(false);
+    }
+  };
+
+  const disconnect = async () => {
+    if (session?.isDemo) {
+      setSession(null);
+      setCurrentUser(null);
+      initializeAppSession();
+      return;
+    }
+    try {
+      if (auth) {
+        await signOut(auth);
+      }
+    } catch {}
     setSession(null);
     setCurrentUser(null);
     setActiveScreen('dashboard');
+    setConnectStatus('');
   };
 
-  const activeLabel = useMemo(() => SCREENS.find((screen) => screen.key === activeScreen)?.label || 'Dashboard', [activeScreen]);
+  const activeNavItem = useMemo(() => getNavigationItemByRoute(activeScreen), [activeScreen]);
+  const activeLabel = activeNavItem?.label || SCREENS.find((screen) => screen.key === activeScreen)?.label || 'Dashboard';
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <StatusBar style="light" />
-      {!session ? (
-        <SetupScreen draft={sessionDraft} setDraft={setSessionDraft} error={connectError} loading={connecting} onConnect={connect} />
+      <StatusBar style={themeMode === 'dark' ? 'light' : 'dark'} />
+      <AppBackdrop />
+      {bootState === 'loading' ? (
+        <LoadingScreen label="Launching IntelliFlow..." mode={themeMode} />
+      ) : bootState === 'unavailable' && !previewMode ? (
+        <ServiceUnavailableScreen
+          onRetry={initializeAppSession}
+          onPreview={() => setPreviewMode(true)}
+          previewEnabled
+          mode={themeMode}
+        />
+      ) : previewMode ? (
+        <PreviewModeScreen onRetry={initializeAppSession} />
+      ) : connecting && !session ? (
+        <LoadingScreen
+          label={
+            authMode === 'register'
+              ? 'Creating your IntelliFlow account...'
+              : authMode === 'reset'
+                ? 'Sending reset link...'
+                : 'Signing you in...'
+          }
+          mode={themeMode}
+        />
+      ) : !session ? (
+        <SetupScreen
+          draft={sessionDraft}
+          setDraft={setSessionDraft}
+          error={connectError}
+          status={connectStatus}
+          loading={connecting}
+          authMode={authMode}
+          setAuthMode={setAuthMode}
+          onConnect={connect}
+          onDemoLogin={continueDemo}
+          appConfig={appConfig}
+          mode={themeMode}
+          showModeOrb={showModeOrb}
+          onToggleTheme={toggleTheme}
+        />
       ) : (
         <View style={styles.appShell}>
-          <View style={styles.header}>
-            <View style={styles.headerCopy}>
-              <Text style={styles.headerEyebrow}>IntelliFlow Mobile</Text>
-              <Text style={styles.headerTitle}>{activeLabel}</Text>
-              <Text style={styles.headerSubtitle}>
-                {currentUser?.email || 'Authenticated user'} • Requested plan {sessionPlan}
-              </Text>
-            </View>
-            <ActionButton title="Disconnect" tone="secondary" onPress={disconnect} />
-          </View>
-
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.navRow}>
-            {SCREENS.map((screen) => (
-              <Chip
-                key={screen.key}
-                label={screen.label}
-                active={activeScreen === screen.key}
-                onPress={() => setActiveScreen(screen.key)}
-              />
-            ))}
-          </ScrollView>
+          <MobileHeader
+            subtitle={session?.isDemo ? 'Demo workspace' : currentUser?.email || 'Live workspace'}
+            theme={theme}
+            right={
+              <View style={styles.headerRightActions}>
+                <View
+                  style={[
+                    styles.modeOrbWrap,
+                    showModeOrb ? styles.modeOrbWrapVisible : styles.modeOrbWrapHidden,
+                  ]}
+                >
+                  <View
+                    style={[
+                      styles.modeOrb,
+                      themeMode === 'dark' ? styles.modeOrbDark : styles.modeOrbLight,
+                    ]}
+                  />
+                </View>
+                <Pressable onPress={toggleTheme} style={styles.headerCompactToggle}>
+                  <Text style={styles.headerCompactToggleText}>{themeMode === 'dark' ? 'Light' : 'Dark'}</Text>
+                </Pressable>
+                <Pressable onPress={() => setActiveScreen('account')} style={styles.headerCompactAvatar}>
+                  <Text style={styles.headerCompactAvatarText}>{(currentUser?.full_name || 'U').slice(0, 1)}</Text>
+                </Pressable>
+              </View>
+            }
+          />
+          <MobileNavigationTracker
+            items={navigationItems}
+            activeKey={activeNavItem?.key}
+            onSelect={setActiveScreen}
+            detail={activeNavItem?.shortDescription}
+            theme={theme}
+          />
 
           <ScrollView contentContainerStyle={styles.content}>
-            <ScreenRenderer activeScreen={activeScreen} session={session} sessionPlan={sessionPlan} />
+            <ScreenRenderer activeScreen={activeScreen} session={session} sessionPlan={sessionPlan} currentUser={currentUser} />
           </ScrollView>
+
+          <BottomTabBar activeScreen={activeScreen} onSelect={setActiveScreen} />
         </View>
       )}
     </SafeAreaView>
   );
 }
 
-const styles = StyleSheet.create({
+function createStyles(theme) {
+  const isDark = theme.mode === 'dark';
+  return StyleSheet.create({
   safeArea: {
     flex: 1,
     backgroundColor: theme.bg,
   },
-  appShell: {
-    flex: 1,
+  backdrop: {
+    ...StyleSheet.absoluteFillObject,
     backgroundColor: theme.bg,
   },
+  backdropGlowTop: {
+    position: 'absolute',
+    top: -120,
+    left: -40,
+    width: 320,
+    height: 320,
+    borderRadius: 999,
+    backgroundColor: isDark ? 'rgba(246, 152, 50, 0.12)' : 'rgba(160, 110, 72, 0.12)',
+  },
+  backdropGlowMid: {
+    position: 'absolute',
+    top: 180,
+    right: -90,
+    width: 260,
+    height: 260,
+    borderRadius: 999,
+    backgroundColor: isDark ? 'rgba(239, 199, 157, 0.08)' : 'rgba(86, 124, 182, 0.08)',
+  },
+  backdropGlowBottom: {
+    position: 'absolute',
+    bottom: -120,
+    left: 40,
+    width: 280,
+    height: 280,
+    borderRadius: 999,
+    backgroundColor: isDark ? 'rgba(255, 244, 233, 0.05)' : 'rgba(122, 87, 59, 0.06)',
+  },
+  backdropGrid: {
+    ...StyleSheet.absoluteFillObject,
+    opacity: 0.18,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255,255,255,0.02)',
+  },
+  appShell: {
+    flex: 1,
+    backgroundColor: 'transparent',
+  },
   setupWrap: {
+    padding: 16,
+    paddingBottom: 32,
+    minHeight: '100%',
+  },
+  authScreen: {
+    minHeight: '100%',
+    borderRadius: 34,
+    overflow: 'hidden',
+    backgroundColor: '#090705',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.06)',
     padding: 20,
+  },
+  authBackgroundGlowPrimary: {
+    position: 'absolute',
+    top: -40,
+    left: -20,
+    width: 280,
+    height: 280,
+    borderRadius: 999,
+    backgroundColor: 'rgba(246, 152, 50, 0.72)',
+    opacity: 0.9,
+  },
+  authBackgroundGlowSecondary: {
+    position: 'absolute',
+    top: 0,
+    right: -120,
+    width: 280,
+    height: 400,
+    borderRadius: 999,
+    backgroundColor: 'rgba(79, 29, 9, 0.92)',
+  },
+  authGlassPaneOne: {
+    position: 'absolute',
+    top: 26,
+    left: -28,
+    width: 210,
+    height: 260,
+    borderRadius: 34,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+    backgroundColor: 'rgba(255,255,255,0.03)',
+    transform: [{ rotate: '28deg' }],
+  },
+  authGlassPaneTwo: {
+    position: 'absolute',
+    top: 82,
+    left: 42,
+    width: 180,
+    height: 220,
+    borderRadius: 28,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.05)',
+    backgroundColor: 'rgba(255,255,255,0.015)',
+    transform: [{ rotate: '28deg' }],
+  },
+  authTopRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    minHeight: 40,
+  },
+  authTopLink: {
+    paddingVertical: 6,
+    paddingHorizontal: 4,
+  },
+  authTopLinkText: {
+    color: '#fff8f2',
+    fontSize: responsiveFont(15),
+    fontWeight: '600',
+    textDecorationLine: 'underline',
+  },
+  authWelcomeShell: {
+    flex: 1,
+    minHeight: 420,
+    justifyContent: 'space-between',
+    paddingTop: 12,
+  },
+  authWelcomeSpacer: {
+    minHeight: 180,
+  },
+  authWelcomeFooter: {
+    gap: 16,
+    paddingBottom: 24,
+  },
+  authWelcomeHeadline: {
+    color: '#fff8f2',
+    fontSize: responsiveFont(24, { min: 22, max: 28 }),
+    lineHeight: responsiveLineHeight(24, 1.2),
+    fontWeight: '800',
+    letterSpacing: -1.2,
+    maxWidth: 290,
+  },
+  authFormHero: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingTop: 32,
+    paddingBottom: 18,
+  },
+  authLogoStage: {
+    width: 180,
+    height: 180,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  authLogoPlateBack: {
+    position: 'absolute',
+    width: 132,
+    height: 132,
+    borderRadius: 34,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.06)',
+    backgroundColor: 'rgba(255,255,255,0.03)',
+    transform: [{ translateY: 18 }, { rotate: '-20deg' }],
+    shadowColor: '#000',
+    shadowOpacity: 0.32,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 12 },
+  },
+  authLogoPlateFront: {
+    width: 132,
+    height: 132,
+    borderRadius: 34,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    transform: [{ rotate: '18deg' }],
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  authCard: {
+    gap: 14,
+  },
+  authCardWelcome: {
+    marginTop: 'auto',
+    paddingBottom: 8,
+  },
+  authCardForm: {
+    marginTop: 6,
+  },
+  authCardTitle: {
+    color: '#fff8f2',
+    fontSize: responsiveFont(25),
+    lineHeight: responsiveLineHeight(25, 1.22),
+    fontWeight: '700',
+    letterSpacing: -0.8,
+  },
+  authCardSubtitle: {
+    color: 'rgba(255,255,255,0.68)',
+    fontSize: responsiveFont(14),
+    lineHeight: responsiveLineHeight(14, 1.5),
+  },
+  authWelcomeTitle: {
+    color: '#fff8f2',
+    fontSize: responsiveFont(32, { min: 28, max: 36 }),
+    lineHeight: responsiveLineHeight(32, 1.08),
+    fontWeight: '800',
+    letterSpacing: -1.4,
+  },
+  authWelcomeBody: {
+    color: 'rgba(255,255,255,0.66)',
+    fontSize: responsiveFont(14),
+    lineHeight: responsiveLineHeight(14, 1.5),
+    maxWidth: 300,
+  },
+  authWelcomeActions: {
+    gap: 12,
+    marginTop: 6,
+  },
+  forgotPasswordLink: {
+    alignSelf: 'flex-end',
+    marginTop: -4,
+  },
+  forgotPasswordText: {
+    color: '#fff8f2',
+    fontSize: responsiveFont(13),
+    fontWeight: '500',
+    textDecorationLine: 'underline',
+  },
+  authBottomMeta: {
+    color: 'rgba(255,255,255,0.54)',
+    fontSize: responsiveFont(12),
+    lineHeight: responsiveLineHeight(13, 1.45),
+    textAlign: 'center',
+    marginTop: 4,
+  },
+  authBackLink: {
+    alignSelf: 'center',
+    paddingVertical: 4,
+  },
+  authBackLinkText: {
+    color: 'rgba(255,255,255,0.74)',
+    fontSize: responsiveFont(13),
+    fontWeight: '600',
+    textDecorationLine: 'underline',
+  },
+  authInlineMetaButton: {
+    alignSelf: 'center',
+    paddingVertical: 6,
+  },
+  authInlineMetaButtonText: {
+    color: 'rgba(255,255,255,0.68)',
+    fontSize: responsiveFont(13),
+    fontWeight: '600',
+  },
+  authFieldLabel: {
+    color: '#fff8f2',
+    textTransform: 'none',
+    letterSpacing: 0,
+    fontWeight: '500',
+    fontSize: responsiveFont(13),
+  },
+  authInput: {
+    minHeight: 58,
+    borderRadius: 18,
+    backgroundColor: 'rgba(18, 18, 18, 0.78)',
+    borderColor: 'rgba(255,255,255,0.08)',
+    color: '#fff8f2',
+  },
+  authChip: {
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    borderColor: 'rgba(255,255,255,0.12)',
+  },
+  authChipActive: {
+    backgroundColor: '#f5b24c',
+    borderColor: '#f5b24c',
+  },
+  authChipText: {
+    color: 'rgba(255,248,242,0.78)',
+  },
+  authChipTextActive: {
+    color: '#1d120b',
+  },
+  authActionButton: {
+    minHeight: 56,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 18,
+  },
+  authActionButtonPrimary: {
+    backgroundColor: '#f3c85e',
+  },
+  authActionButtonSecondary: {
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.12)',
+  },
+  authActionButtonPressed: {
+    transform: [{ scale: 0.985 }],
+    opacity: 0.94,
+  },
+  authActionButtonText: {
+    color: '#1d120b',
+    fontSize: responsiveFont(17),
+    fontWeight: '700',
+  },
+  authActionButtonTextSecondary: {
+    color: '#fff8f2',
+  },
+  brandLogoShell: {
+    width: 110,
+    height: 110,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  brandLogoShellLarge: {
+    width: 132,
+    height: 132,
+  },
+  brandLogoLayer: {
+    position: 'absolute',
+    borderRadius: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  brandLogoLayerBack: {
+    width: 92,
+    height: 92,
+    backgroundColor: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(74, 51, 35, 0.08)',
+    transform: [{ translateY: 18 }, { rotate: '-12deg' }],
+    borderWidth: 1,
+    borderColor: theme.border,
+  },
+  brandLogoLayerFront: {
+    width: 92,
+    height: 92,
+    backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.86)',
+    transform: [{ rotate: '12deg' }],
+    borderWidth: 1,
+    borderColor: theme.border,
+  },
+  brandLogoGlyph: {
+    color: '#ff7b35',
+    fontSize: responsiveFont(26),
+    fontWeight: '900',
+    letterSpacing: -1,
+    transform: [{ rotate: '-12deg' }],
+  },
+  brandLogoGlyphLarge: {
+    fontSize: responsiveFont(34),
+  },
+  loadingScreenWrap: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 28,
     gap: 16,
   },
+  loadingScreenTitle: {
+    color: theme.text,
+    fontSize: responsiveFont(34),
+    fontWeight: '800',
+    letterSpacing: -1.2,
+  },
+  loadingScreenBody: {
+    color: theme.textMuted,
+    fontSize: responsiveFont(15),
+    lineHeight: responsiveLineHeight(15, 1.55),
+    textAlign: 'center',
+    maxWidth: 260,
+  },
+  loadingTrack: {
+    width: '82%',
+    height: 10,
+    borderRadius: 999,
+    backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(74, 51, 35, 0.08)',
+    overflow: 'hidden',
+    marginTop: 4,
+  },
+  loadingFill: {
+    height: '100%',
+    borderRadius: 999,
+    backgroundColor: '#ff7b35',
+  },
+  loadingScreenMeta: {
+    color: theme.textSoft,
+    fontSize: responsiveFont(12),
+    fontWeight: '600',
+    textTransform: 'uppercase',
+    letterSpacing: 1.2,
+  },
+  landingHeader: {
+    alignItems: 'center',
+    paddingTop: 8,
+  },
+  landingBrand: {
+    color: theme.text,
+    fontSize: responsiveFont(34),
+    fontWeight: '800',
+    letterSpacing: -1.4,
+  },
+  themeToggleRow: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    alignItems: 'center',
+    gap: 10,
+  },
+  modeOrbWrap: {
+    overflow: 'hidden',
+  },
+  modeOrbWrapVisible: {
+    width: 42,
+    opacity: 1,
+  },
+  modeOrbWrapHidden: {
+    width: 0,
+    opacity: 0,
+  },
+  modeOrb: {
+    width: 42,
+    height: 42,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: isDark ? '#8a6545' : 'rgba(101, 74, 52, 0.24)',
+  },
+  modeOrbDark: {
+    backgroundColor: '#101010',
+  },
+  modeOrbLight: {
+    backgroundColor: '#f5f0ea',
+  },
+  themeToggleButton: {
+    minHeight: 42,
+    paddingHorizontal: 16,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: isDark ? '#8a6545' : 'rgba(101, 74, 52, 0.2)',
+    backgroundColor: isDark ? '#583c28' : 'rgba(255,255,255,0.92)',
+    justifyContent: 'center',
+  },
+  themeToggleButtonText: {
+    color: theme.text,
+    fontSize: responsiveFont(12),
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+  },
+  heroBadge: {
+    alignSelf: 'center',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: isDark ? 'rgba(255, 249, 240, 0.12)' : 'rgba(255, 249, 240, 0.92)',
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(91, 59, 42, 0.08)',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    shadowColor: '#7a5a44',
+    shadowOpacity: 0.14,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 8 },
+  },
+  heroBadgeIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: 999,
+    backgroundColor: '#6d4732',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  heroBadgeIconText: {
+    color: '#f5c987',
+    fontSize: responsiveFont(15),
+    fontWeight: '800',
+  },
+  heroBadgeText: {
+    color: theme.text,
+    fontSize: responsiveFont(11),
+    fontWeight: '800',
+    textTransform: 'uppercase',
+    letterSpacing: 1.9,
+  },
   heroPanel: {
+    backgroundColor: isDark ? '#0f2744' : '#f7f1e9',
+    borderRadius: 38,
+    borderWidth: 1,
+    borderColor: isDark ? 'rgba(255, 235, 216, 0.14)' : 'rgba(120, 85, 57, 0.12)',
+    minHeight: 770,
+    justifyContent: 'space-between',
+    overflow: 'hidden',
+  },
+  heroOrb: {
+    position: 'absolute',
+    top: -30,
+    right: -60,
+    width: 220,
+    height: 220,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255, 192, 142, 0.08)',
+  },
+  heroGrid: {
+    ...StyleSheet.absoluteFillObject,
+    opacity: 0.12,
+    borderRadius: 38,
+  },
+  heroArc: {
+    position: 'absolute',
+    top: 44,
+    left: 24,
+    right: 24,
+    height: 360,
+    borderTopWidth: 1,
+    borderColor: 'rgba(255, 222, 194, 0.12)',
+    borderRadius: 240,
+  },
+  heroSkyline: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: 290,
+    backgroundColor: isDark ? 'rgba(7, 10, 18, 0.42)' : 'rgba(181, 158, 136, 0.24)',
+  },
+  heroTower: {
+    position: 'absolute',
+    bottom: 0,
+    backgroundColor: isDark ? 'rgba(22, 31, 44, 0.92)' : 'rgba(140, 118, 98, 0.7)',
+    borderTopLeftRadius: 6,
+    borderTopRightRadius: 6,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 228, 198, 0.08)',
+  },
+  heroContent: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 28,
+    paddingTop: 86,
+    paddingBottom: 36,
+    gap: 18,
+  },
+  heroTitle: {
+    color: theme.mode === 'dark' ? '#fffaf5' : theme.text,
+    fontSize: responsiveFont(48, { min: 42, max: 54 }),
+    lineHeight: responsiveLineHeight(48, 1.08),
+    fontWeight: '800',
+    letterSpacing: -2.2,
+    textAlign: 'center',
+  },
+  heroMetricBody: {
+    color: theme.textMuted,
+    fontSize: responsiveFont(13),
+    lineHeight: responsiveLineHeight(13, 1.4),
+  },
+  heroDivider: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  heroDividerLine: {
+    width: 72,
+    height: 2,
+    borderRadius: 999,
+    backgroundColor: 'rgba(246, 217, 179, 0.72)',
+  },
+  heroDividerDot: {
+    width: 14,
+    height: 14,
+    borderRadius: 999,
+    backgroundColor: '#f0bd74',
+  },
+  heroBody: {
+    color: theme.textSecondary || theme.textMuted,
+    fontSize: responsiveFont(16),
+    lineHeight: responsiveLineHeight(16, 1.75),
+    textAlign: 'center',
+    maxWidth: 420,
+  },
+  heroActionStack: {
+    width: '100%',
+    gap: 16,
+    marginTop: 8,
+    maxWidth: 400,
+  },
+  landingButton: {
+    minHeight: 78,
+    borderRadius: 999,
+    paddingHorizontal: 28,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    borderWidth: 1,
+  },
+  landingButtonPrimary: {
+    backgroundColor: isDark ? 'rgba(92, 56, 34, 0.88)' : '#5c3822',
+    borderColor: isDark ? '#f0c58d' : '#5c3822',
+    shadowColor: '#000',
+    shadowOpacity: 0.22,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 12 },
+  },
+  landingButtonSecondary: {
+    backgroundColor: isDark ? 'rgba(255, 249, 240, 0.96)' : 'rgba(255,255,255,0.94)',
+    borderColor: 'rgba(91, 59, 42, 0.12)',
+  },
+  landingButtonIcon: {
+    color: '#efc79d',
+    fontSize: responsiveFont(24),
+    width: 32,
+    textAlign: 'center',
+  },
+  landingButtonIconSecondary: {
+    color: theme.text,
+    fontSize: responsiveFont(24),
+    width: 32,
+    textAlign: 'center',
+  },
+  landingButtonPrimaryText: {
+    color: '#fff7f0',
+    fontSize: responsiveFont(21),
+    fontWeight: '800',
+    flex: 1,
+    textAlign: 'center',
+    letterSpacing: -0.4,
+  },
+  landingButtonSecondaryText: {
+    color: theme.text,
+    fontSize: responsiveFont(21),
+    fontWeight: '800',
+    flex: 1,
+    textAlign: 'center',
+    letterSpacing: -0.4,
+  },
+  landingButtonArrow: {
+    color: '#fff7f0',
+    fontSize: responsiveFont(32),
+    lineHeight: responsiveLineHeight(32, 1),
+  },
+  landingButtonArrowSecondary: {
+    color: theme.text,
+    fontSize: responsiveFont(32),
+    lineHeight: responsiveLineHeight(32, 1),
+  },
+  heroFooter: {
+    color: theme.textMuted,
+    fontSize: responsiveFont(14),
+    fontWeight: '600',
+    textAlign: 'center',
+    marginTop: 6,
+  },
+  headerShell: {
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    paddingBottom: 10,
+    gap: 12,
+  },
+  headerShellCompact: {
+    paddingHorizontal: 16,
+    paddingTop: 12,
+    paddingBottom: 6,
+    gap: 12,
+  },
+  headerCompactBar: {
+    minHeight: 62,
+    borderRadius: 18,
+    backgroundColor: isDark ? 'rgba(71, 28, 12, 0.72)' : 'rgba(255,255,255,0.82)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 182, 123, 0.12)',
+    paddingHorizontal: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  headerCompactSpacer: {
+    flex: 1,
+  },
+  headerRightActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  headerCompactBadge: {
+    minWidth: 54,
+    height: 38,
+    borderRadius: 14,
+    backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(74, 51, 35, 0.08)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 10,
+  },
+  headerCompactBadgeText: {
+    color: theme.text,
+    fontSize: responsiveFont(12),
+    fontWeight: '700',
+  },
+  headerCompactToggle: {
+    minWidth: 56,
+    height: 38,
+    borderRadius: 14,
+    backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(74, 51, 35, 0.08)',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 10,
+  },
+  headerCompactToggleText: {
+    color: theme.text,
+    fontSize: responsiveFont(12),
+    fontWeight: '700',
+  },
+  headerCompactAvatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 14,
+    backgroundColor: '#ff6433',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headerCompactAvatarText: {
+    color: '#fff9f5',
+    fontSize: responsiveFont(18),
+    fontWeight: '700',
+  },
+  headerCompactTitle: {
+    color: theme.text,
+    fontSize: responsiveFont(28),
+    fontWeight: '300',
+    letterSpacing: -1.2,
+  },
+  headerCompactSubtitle: {
+    color: theme.textMuted,
+    fontSize: responsiveFont(13),
+  },
+  headerBrandRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    gap: 12,
     backgroundColor: theme.panel,
     borderRadius: 28,
     borderWidth: 1,
     borderColor: theme.border,
-    padding: 22,
-    gap: 12,
+    padding: 18,
   },
-  heroEyebrow: {
-    color: theme.accentSoft,
-    fontSize: 12,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-    letterSpacing: 1.4,
-  },
-  heroTitle: {
-    color: theme.text,
-    fontSize: 30,
-    lineHeight: 34,
-    fontWeight: '700',
-  },
-  heroBody: {
-    color: theme.textMuted,
-    fontSize: 15,
-    lineHeight: 24,
-  },
-  header: {
-    paddingHorizontal: 20,
-    paddingTop: 12,
-    paddingBottom: 8,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+  brandMark: {
+    width: 48,
+    height: 48,
+    borderRadius: 18,
+    backgroundColor: theme.accentStrong,
     alignItems: 'center',
-    gap: 12,
+    justifyContent: 'center',
+    shadowColor: '#000',
+    shadowOpacity: 0.24,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 10 },
+  },
+  brandMarkText: {
+    color: '#2b1d13',
+    fontSize: responsiveFont(16),
+    fontWeight: '800',
+    letterSpacing: -0.5,
   },
   headerCopy: {
     flex: 1,
@@ -2221,39 +3677,202 @@ const styles = StyleSheet.create({
   },
   headerEyebrow: {
     color: theme.accentSoft,
-    fontSize: 11,
+    fontSize: responsiveFont(11),
     textTransform: 'uppercase',
     fontWeight: '700',
     letterSpacing: 1.4,
   },
   headerTitle: {
     color: theme.text,
-    fontSize: 26,
-    fontWeight: '700',
+    fontSize: responsiveFont(28),
+    fontWeight: '800',
+    letterSpacing: -0.8,
   },
   headerSubtitle: {
     color: theme.textMuted,
-    fontSize: 13,
+    fontSize: responsiveFont(13),
+    lineHeight: responsiveLineHeight(13, 1.35),
+  },
+  headerStatsRow: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  headerStatCard: {
+    flex: 1,
+    backgroundColor: theme.panelSoft,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: theme.border,
+    padding: 14,
+    gap: 4,
+  },
+  headerStatLabel: {
+    color: theme.textSoft,
+    fontSize: responsiveFont(11),
+    textTransform: 'uppercase',
+    fontWeight: '700',
+    letterSpacing: 1.1,
+  },
+  headerStatValue: {
+    color: theme.text,
+    fontSize: responsiveFont(15),
+    fontWeight: '700',
+  },
+  navShell: {
+    paddingBottom: 8,
+  },
+  navShellSecondary: {
+    paddingBottom: 6,
   },
   navRow: {
     paddingHorizontal: 16,
-    paddingBottom: 10,
+    paddingVertical: 2,
     gap: 10,
   },
   content: {
     padding: 16,
-    paddingBottom: 40,
+    paddingBottom: 120,
+  },
+  bottomTabShell: {
+    position: 'absolute',
+    left: 14,
+    right: 14,
+    bottom: 14,
+    minHeight: 84,
+    borderRadius: 28,
+    backgroundColor: isDark ? 'rgba(64, 26, 11, 0.95)' : 'rgba(255,255,255,0.95)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 183, 126, 0.12)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-around',
+    paddingHorizontal: 8,
+    paddingVertical: 8,
+  },
+  bottomTabItem: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 5,
+    minWidth: 58,
+    paddingVertical: 8,
+    borderRadius: 20,
+  },
+  bottomTabItemActive: {
+    backgroundColor: '#ff6433',
+    minHeight: 62,
+  },
+  bottomTabIcon: {
+    color: theme.textMuted,
+    fontSize: responsiveFont(14),
+    fontWeight: '700',
+  },
+  bottomTabIconActive: {
+    color: '#fffaf5',
+  },
+  bottomTabLabel: {
+    color: theme.textSoft,
+    fontSize: responsiveFont(10),
+    fontWeight: '700',
+  },
+  bottomTabLabelActive: {
+    color: '#fffaf5',
+  },
+  planCard: {
+    gap: 10,
+  },
+  bootWrap: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 14,
+    padding: 24,
+  },
+  bootText: {
+    color: theme.textMuted,
+    fontSize: responsiveFont(15),
+    fontWeight: '600',
+  },
+  screenTopBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  screenTopBarButton: {
+    width: 48,
+    height: 48,
+    borderRadius: 14,
+    backgroundColor: 'rgba(90, 70, 60, 0.38)',
+    borderWidth: 1,
+    borderColor: theme.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  screenTopBarButtonText: {
+    color: theme.text,
+    fontSize: responsiveFont(18),
+    fontWeight: '700',
+  },
+  screenTopBarTitle: {
+    color: theme.text,
+    fontSize: responsiveFont(22),
+    fontWeight: '500',
   },
   screenStack: {
     gap: 16,
   },
+  showcaseCard: {
+    borderRadius: 34,
+    backgroundColor: isDark ? 'rgba(19, 12, 8, 0.96)' : 'rgba(255,255,255,0.96)',
+    borderWidth: 1,
+    borderColor: 'rgba(245, 210, 180, 0.12)',
+    padding: 20,
+    overflow: 'hidden',
+    gap: 16,
+  },
+  showcaseCardBlue: {
+    backgroundColor: '#3d68ef',
+  },
+  showcaseGlow: {
+    position: 'absolute',
+    top: -40,
+    right: -20,
+    width: 180,
+    height: 180,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255, 96, 37, 0.18)',
+  },
+  showcaseTitle: {
+    color: theme.text,
+    fontSize: responsiveFont(32),
+    lineHeight: responsiveLineHeight(32, 1.1),
+    fontWeight: '300',
+    letterSpacing: -1.4,
+    maxWidth: 220,
+  },
+  showcaseBody: {
+    color: theme.textMuted,
+    fontSize: responsiveFont(14),
+    lineHeight: responsiveLineHeight(14, 1.4),
+    maxWidth: 280,
+  },
+  showcaseTitleOnDark: {
+    color: '#fffaf5',
+  },
+  showcaseBodyOnDark: {
+    color: 'rgba(255, 244, 233, 0.78)',
+  },
   panel: {
     backgroundColor: theme.panel,
-    borderRadius: 24,
+    borderRadius: 28,
     borderWidth: 1,
     borderColor: theme.border,
     padding: 18,
     gap: 14,
+    shadowColor: '#000',
+    shadowOpacity: 0.16,
+    shadowRadius: 18,
+    shadowOffset: { width: 0, height: 12 },
   },
   panelHeader: {
     flexDirection: 'row',
@@ -2267,48 +3886,125 @@ const styles = StyleSheet.create({
   },
   panelTitle: {
     color: theme.text,
-    fontSize: 20,
+    fontSize: responsiveFont(20),
     fontWeight: '700',
   },
   panelSubtitle: {
     color: theme.textMuted,
-    fontSize: 14,
-    lineHeight: 22,
+    fontSize: responsiveFont(14),
+    lineHeight: responsiveLineHeight(14, 1.5),
   },
   metricGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 10,
   },
+  routePreview: {
+    height: 90,
+    borderRadius: 22,
+    backgroundColor: 'rgba(255,255,255,0.03)',
+    overflow: 'hidden',
+    justifyContent: 'center',
+  },
+  routePreviewLarge: {
+    height: 190,
+    borderRadius: 26,
+    backgroundColor: '#090909',
+    overflow: 'hidden',
+    justifyContent: 'center',
+  },
+  routePath: {
+    position: 'absolute',
+    left: 54,
+    right: 80,
+    top: 43,
+    height: 2,
+    backgroundColor: 'rgba(255,255,255,0.3)',
+  },
+  routePathWide: {
+    position: 'absolute',
+    left: 40,
+    right: 58,
+    top: 98,
+    height: 3,
+    backgroundColor: 'rgba(255,255,255,0.25)',
+  },
+  routeNodeOrange: {
+    position: 'absolute',
+    left: 28,
+    top: 34,
+    width: 22,
+    height: 22,
+    borderRadius: 999,
+    backgroundColor: '#ff6433',
+  },
+  routeNodeBlue: {
+    position: 'absolute',
+    left: '48%',
+    top: 30,
+    width: 30,
+    height: 30,
+    borderRadius: 999,
+    backgroundColor: '#426cf0',
+  },
+  routeNodeOrangeSmall: {
+    position: 'absolute',
+    right: 28,
+    top: 38,
+    width: 20,
+    height: 20,
+    borderRadius: 999,
+    backgroundColor: '#ff8e53',
+  },
+  routeMapGlowLeft: {
+    position: 'absolute',
+    left: -30,
+    top: 70,
+    width: 140,
+    height: 90,
+    backgroundColor: 'rgba(255,100,51,0.42)',
+    borderRadius: 60,
+  },
+  routeMapGlowRight: {
+    position: 'absolute',
+    right: -10,
+    top: 55,
+    width: 110,
+    height: 100,
+    backgroundColor: 'rgba(66,108,240,0.5)',
+    borderRadius: 60,
+  },
   metricCard: {
     minWidth: '47%',
     flexGrow: 1,
     backgroundColor: theme.panelSoft,
-    borderRadius: 18,
+    borderRadius: 20,
     padding: 14,
     borderWidth: 1,
     borderColor: theme.border,
     gap: 6,
   },
   metricCardAccent: {
-    backgroundColor: '#1b2735',
+    backgroundColor: 'rgba(246, 152, 50, 0.16)',
+    borderColor: 'rgba(246, 152, 50, 0.24)',
   },
   metricLabel: {
     color: theme.textSoft,
-    fontSize: 12,
+    fontSize: responsiveFont(12),
     textTransform: 'uppercase',
     fontWeight: '700',
     letterSpacing: 1.1,
   },
   metricValue: {
     color: theme.text,
-    fontSize: 24,
-    fontWeight: '700',
+    fontSize: responsiveFont(24),
+    fontWeight: '800',
+    letterSpacing: -0.8,
   },
   button: {
-    minHeight: 42,
+    minHeight: 44,
     borderRadius: 999,
-    paddingHorizontal: 16,
+    paddingHorizontal: 18,
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 1,
@@ -2318,17 +4014,18 @@ const styles = StyleSheet.create({
     borderColor: theme.accent,
   },
   buttonSecondary: {
-    backgroundColor: 'transparent',
+    backgroundColor: theme.panelGlass,
     borderColor: theme.border,
   },
   buttonDisabled: {
     opacity: 0.55,
   },
   buttonText: {
-    color: '#06101e',
-    fontSize: 13,
-    fontWeight: '700',
+    color: theme.chipText,
+    fontSize: responsiveFont(13),
+    fontWeight: '800',
     textTransform: 'uppercase',
+    letterSpacing: 0.6,
   },
   buttonSecondaryText: {
     color: theme.text,
@@ -2338,7 +4035,7 @@ const styles = StyleSheet.create({
   },
   fieldLabel: {
     color: theme.textMuted,
-    fontSize: 12,
+    fontSize: responsiveFont(12),
     fontWeight: '700',
     textTransform: 'uppercase',
     letterSpacing: 1,
@@ -2347,12 +4044,12 @@ const styles = StyleSheet.create({
     minHeight: 48,
     backgroundColor: theme.panelSoft,
     color: theme.text,
-    borderRadius: 16,
+    borderRadius: 18,
     borderWidth: 1,
     borderColor: theme.border,
     paddingHorizontal: 14,
     paddingVertical: 12,
-    fontSize: 15,
+    fontSize: responsiveFont(15),
   },
   inputMultiline: {
     minHeight: 96,
@@ -2367,9 +4064,9 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     borderWidth: 1,
     borderColor: theme.border,
-    backgroundColor: 'transparent',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    backgroundColor: theme.panelGlass,
+    paddingHorizontal: 13,
+    paddingVertical: 9,
   },
   chipActive: {
     backgroundColor: theme.chip,
@@ -2383,8 +4080,8 @@ const styles = StyleSheet.create({
   },
   chipText: {
     color: theme.textMuted,
-    fontSize: 12,
-    fontWeight: '600',
+    fontSize: responsiveFont(12),
+    fontWeight: '700',
   },
   chipTextActive: {
     color: theme.chipText,
@@ -2397,9 +4094,21 @@ const styles = StyleSheet.create({
     padding: 12,
   },
   errorText: {
-    color: '#ffd6d6',
-    fontSize: 13,
-    lineHeight: 20,
+    color: theme.mode === 'dark' ? '#ffd6d6' : '#8f3434',
+    fontSize: responsiveFont(13),
+    lineHeight: responsiveLineHeight(13, 1.45),
+  },
+  successBanner: {
+    backgroundColor: 'rgba(73, 201, 139, 0.12)',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: 'rgba(73, 201, 139, 0.25)',
+    padding: 12,
+  },
+  successText: {
+    color: theme.mode === 'dark' ? '#d5ffea' : '#206646',
+    fontSize: responsiveFont(13),
+    lineHeight: responsiveLineHeight(13, 1.45),
   },
   loadingBlock: {
     minHeight: 240,
@@ -2408,7 +4117,7 @@ const styles = StyleSheet.create({
   },
   rowCard: {
     backgroundColor: theme.panelSoft,
-    borderRadius: 18,
+    borderRadius: 20,
     borderWidth: 1,
     borderColor: theme.border,
     padding: 14,
@@ -2419,29 +4128,261 @@ const styles = StyleSheet.create({
   },
   rowTitle: {
     color: theme.text,
-    fontSize: 15,
-    fontWeight: '700',
+    fontSize: responsiveFont(15),
+    fontWeight: '800',
   },
   rowBody: {
     color: theme.textMuted,
-    fontSize: 13,
-    lineHeight: 20,
+    fontSize: responsiveFont(13),
+    lineHeight: responsiveLineHeight(13, 1.45),
   },
   rowBodyMuted: {
     color: theme.textSoft,
-    fontSize: 12,
-    lineHeight: 18,
+    fontSize: responsiveFont(12),
+    lineHeight: responsiveLineHeight(12, 1.4),
+  },
+  orderHistoryCard: {
+    backgroundColor: theme.panelSoft,
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: theme.border,
+    padding: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+  },
+  orderHistoryVisual: {
+    width: 86,
+    height: 86,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.06)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+  },
+  inventoryHeadline: {
+    color: theme.text,
+    fontSize: responsiveFont(46, { min: 38, max: 54 }),
+    lineHeight: responsiveLineHeight(46, 1.06),
+    fontWeight: '300',
+    letterSpacing: -2.2,
+    marginTop: -2,
+  },
+  filterRow: {
+    flexDirection: 'row',
+    gap: 10,
+    flexWrap: 'wrap',
+  },
+  filterBoxCompact: {
+    width: 58,
+    height: 58,
+    borderRadius: 18,
+    backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(103, 70, 46, 0.06)',
+    borderWidth: 1,
+    borderColor: theme.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  filterBoxWide: {
+    minWidth: 126,
+    height: 58,
+    borderRadius: 18,
+    backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(103, 70, 46, 0.06)',
+    borderWidth: 1,
+    borderColor: theme.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 18,
+  },
+  filterBoxAddress: {
+    flex: 1,
+    minWidth: 170,
+    height: 58,
+    borderRadius: 18,
+    backgroundColor: isDark ? 'rgba(255,255,255,0.08)' : 'rgba(103, 70, 46, 0.06)',
+    borderWidth: 1,
+    borderColor: theme.border,
+    justifyContent: 'center',
+    paddingHorizontal: 18,
+  },
+  filterBoxText: {
+    color: theme.text,
+    fontSize: responsiveFont(15),
+    fontWeight: '500',
+  },
+  productGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12,
+  },
+  productTile: {
+    width: '47%',
+    backgroundColor: isDark ? '#26211d' : '#fffaf5',
+    borderRadius: 24,
+    borderWidth: 1,
+    borderColor: theme.border,
+    padding: 12,
+    gap: 8,
+  },
+  productTileCategory: {
+    color: theme.text,
+    fontSize: responsiveFont(12),
+  },
+  productVisualWrap: {
+    height: 120,
+    borderRadius: 18,
+    backgroundColor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(103, 70, 46, 0.06)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  productVisual: {
+    width: 72,
+    height: 72,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,255,255,0.18)',
+    borderWidth: 6,
+    borderColor: 'rgba(18,18,18,0.45)',
+  },
+  productTileSku: {
+    color: theme.textSoft,
+    fontSize: responsiveFont(11),
+  },
+  productTileName: {
+    color: theme.text,
+    fontSize: responsiveFont(14),
+    lineHeight: responsiveLineHeight(14, 1.25),
+    fontWeight: '700',
+    minHeight: 36,
+  },
+  productTileFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  productTilePrice: {
+    color: '#fff5ed',
+    fontSize: responsiveFont(18),
+    fontWeight: '700',
+  },
+  productTilePriceLight: {
+    color: theme.text,
+  },
+  productTileStockDot: {
+    width: 16,
+    height: 16,
+    borderRadius: 999,
+    backgroundColor: theme.success,
+  },
+  productTileStockDotWarn: {
+    backgroundColor: '#ff6433',
+  },
+  ctaDock: {
+    minHeight: 72,
+    borderRadius: 20,
+    backgroundColor: isDark ? '#4f210d' : '#5f3b28',
+    borderWidth: 1,
+    borderColor: 'rgba(255,153,91,0.25)',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 18,
+  },
+  ctaDockIcon: {
+    color: '#fff6ef',
+    fontSize: responsiveFont(18),
+    fontWeight: '700',
+  },
+  ctaDockText: {
+    color: '#fff6ef',
+    fontSize: responsiveFont(18),
+    fontWeight: '500',
+  },
+  ctaDockArrow: {
+    color: '#fff6ef',
+    fontSize: responsiveFont(22),
+    fontWeight: '700',
+  },
+  ordersBoard: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 14,
+  },
+  ordersBoardColumn: {
+    width: '47%',
+    gap: 4,
+  },
+  ordersBoardValue: {
+    color: '#fffaf5',
+    fontSize: responsiveFont(36),
+    fontWeight: '700',
+  },
+  ordersBoardLabel: {
+    color: 'rgba(255,255,255,0.74)',
+    fontSize: responsiveFont(13),
+  },
+  ordersBars: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    gap: 12,
+    height: 120,
+  },
+  ordersBar: {
+    flex: 1,
+    borderTopLeftRadius: 18,
+    borderTopRightRadius: 18,
+    backgroundColor: isDark ? 'rgba(8, 10, 32, 0.78)' : 'rgba(44, 70, 166, 0.62)',
+  },
+  ordersBarShort: {
+    height: 26,
+  },
+  ordersBarMid: {
+    height: 72,
+  },
+  ordersBarTall: {
+    height: 110,
+  },
+  stockLegendWrap: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 12,
+  },
+  stockLegendColumn: {
+    gap: 12,
+    flex: 1,
+  },
+  stockLegendItem: {
+    color: isDark ? '#fff4ea' : '#2d1d14',
+    fontSize: responsiveFont(14),
+  },
+  stockDonut: {
+    width: 150,
+    height: 150,
+    borderRadius: 999,
+    borderWidth: 24,
+    borderTopColor: '#1c110b',
+    borderLeftColor: '#ff6433',
+    borderRightColor: '#ff9d53',
+    borderBottomColor: '#120a06',
+    transform: [{ rotate: '-18deg' }],
+  },
+  listBlock: {
+    gap: 6,
+  },
+  listItem: {
+    color: theme.textMuted,
+    fontSize: responsiveFont(13),
+    lineHeight: responsiveLineHeight(13, 1.45),
   },
   sectionLabel: {
     color: theme.accentSoft,
-    fontSize: 12,
+    fontSize: responsiveFont(12),
     fontWeight: '700',
     textTransform: 'uppercase',
     letterSpacing: 1.2,
     marginTop: 2,
   },
   emptyState: {
-    borderRadius: 18,
+    borderRadius: 20,
     borderWidth: 1,
     borderColor: theme.border,
     borderStyle: 'dashed',
@@ -2450,54 +4391,54 @@ const styles = StyleSheet.create({
   },
   emptyTitle: {
     color: theme.text,
-    fontSize: 15,
+    fontSize: responsiveFont(15),
     fontWeight: '700',
   },
   emptyBody: {
     color: theme.textMuted,
-    fontSize: 13,
-    lineHeight: 20,
+    fontSize: responsiveFont(13),
+    lineHeight: responsiveLineHeight(13, 1.45),
   },
   inlineValue: {
     gap: 2,
   },
   inlineLabel: {
     color: theme.textSoft,
-    fontSize: 12,
+    fontSize: responsiveFont(12),
     textTransform: 'uppercase',
     fontWeight: '700',
     letterSpacing: 1,
   },
   inlineText: {
     color: theme.text,
-    fontSize: 14,
+    fontSize: responsiveFont(14),
   },
   planNoticeText: {
     color: theme.textMuted,
-    fontSize: 14,
-    lineHeight: 22,
+    fontSize: responsiveFont(14),
+    lineHeight: responsiveLineHeight(14, 1.5),
   },
   jsonWrap: {
-    borderRadius: 18,
-    backgroundColor: '#09111d',
+    borderRadius: 20,
+    backgroundColor: '#120d0a',
     borderWidth: 1,
     borderColor: theme.border,
     padding: 14,
   },
   jsonText: {
     color: '#d7e6ff',
-    fontSize: 12,
-    lineHeight: 18,
+    fontSize: responsiveFont(12),
+    lineHeight: responsiveLineHeight(12, 1.4),
     fontFamily: 'Courier',
   },
   answerText: {
     color: theme.text,
-    fontSize: 14,
-    lineHeight: 22,
+    fontSize: responsiveFont(14),
+    lineHeight: responsiveLineHeight(14, 1.5),
   },
   orderCard: {
     backgroundColor: theme.panelSoft,
-    borderRadius: 18,
+    borderRadius: 20,
     borderWidth: 1,
     borderColor: theme.border,
     padding: 14,
@@ -2520,7 +4461,7 @@ const styles = StyleSheet.create({
   },
   recommendationCard: {
     backgroundColor: theme.panelSoft,
-    borderRadius: 18,
+    borderRadius: 20,
     borderWidth: 1,
     borderColor: theme.border,
     padding: 14,
@@ -2538,8 +4479,9 @@ const styles = StyleSheet.create({
   },
   recommendationAction: {
     color: theme.accentSoft,
-    fontSize: 13,
-    lineHeight: 20,
+    fontSize: responsiveFont(13),
+    lineHeight: responsiveLineHeight(13, 1.45),
     fontWeight: '600',
   },
-});
+  });
+}

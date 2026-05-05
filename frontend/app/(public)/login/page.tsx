@@ -5,30 +5,8 @@ import { useRouter } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
 import Link from 'next/link'
 import Image from 'next/image'
-import { FirebaseError } from 'firebase/app'
 import logo from '@/docs/images/intelliflow.png'
-
-const getAuthErrorMessage = (error: unknown) => {
-  if (error instanceof FirebaseError) {
-    switch (error.code) {
-      case 'auth/invalid-email':
-        return 'Enter a valid email address.'
-      case 'auth/user-disabled':
-        return 'This account has been disabled.'
-      case 'auth/user-not-found':
-      case 'auth/wrong-password':
-        return 'Email or password is incorrect.'
-      case 'auth/too-many-requests':
-        return 'Too many attempts. Try again in a few minutes.'
-      default:
-        return error.message || 'Login failed.'
-    }
-  }
-  if (error instanceof Error) {
-    return error.message
-  }
-  return 'Login failed.'
-}
+import { getLoginErrorMessage } from '@/lib/auth/messages'
 
 const isValidEmail = (value: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)
 
@@ -36,6 +14,7 @@ export default function LoginPage() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
+  const [status, setStatus] = useState('')
   const [loading, setLoading] = useState(false)
   const { login } = useAuth()
   const router = useRouter()
@@ -43,17 +22,19 @@ export default function LoginPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
+    setStatus('')
 
     try {
       if (!isValidEmail(email)) {
-        setError('Enter a valid email address.')
+        setError('Enter a valid work email address.')
         return
       }
       setLoading(true)
       await login(email, password)
+      setStatus('Sign-in successful. Opening your IntelliFlow workspace...')
       router.push('/dashboard')
     } catch (err: unknown) {
-      setError(getAuthErrorMessage(err))
+      setError(getLoginErrorMessage(err))
     } finally {
       setLoading(false)
     }
@@ -129,6 +110,11 @@ export default function LoginPage() {
               {error && (
                 <div className="rounded-2xl border border-red-400/20 bg-red-500/10 px-4 py-3 text-sm text-red-200">
                   {error}
+                </div>
+              )}
+              {status && (
+                <div className="rounded-2xl border border-emerald-400/20 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200">
+                  {status}
                 </div>
               )}
 

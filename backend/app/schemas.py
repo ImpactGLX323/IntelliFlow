@@ -150,13 +150,16 @@ class AICopilotRequest(BaseModel):
     message: str
     organization_id: Optional[str] = None
     user_plan: str = "FREE"
+    user_id: Optional[str] = None
 
     @field_validator("user_plan")
     @classmethod
     def validate_user_plan(cls, value: str) -> str:
         normalized = value.upper()
+        if normalized == "PREMIUM":
+            normalized = "PRO"
         if normalized not in {"FREE", "PRO", "BOOST"}:
-            raise ValueError("user_plan must be FREE, PRO, or BOOST")
+            raise ValueError("user_plan must be FREE, PREMIUM, PRO, or BOOST")
         return normalized
 
 
@@ -171,6 +174,16 @@ class AICopilotResponse(BaseModel):
     upgrade_required: bool = False
     required_plan: Optional[str] = None
     request_id: Optional[str] = None
+
+
+class MCPDevToolRequest(BaseModel):
+    arguments: dict = Field(default_factory=dict)
+    user_context: dict = Field(default_factory=dict)
+
+
+class MCPDevResourceReadRequest(BaseModel):
+    uri: str
+    user_context: dict = Field(default_factory=dict)
 
 
 class AgentRecommendationRead(BaseModel):

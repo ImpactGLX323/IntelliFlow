@@ -36,8 +36,8 @@ export default function FeatureSection({
   return (
     <section id={id} className="px-4 py-6 sm:px-6 sm:py-8">
       <div className="mx-auto max-w-7xl">
-        <article className="overflow-hidden rounded-[2rem] border border-[#604630] bg-[linear-gradient(180deg,rgba(29,20,16,0.94),rgba(18,13,10,0.96))] shadow-[0_42px_120px_-72px_rgba(0,0,0,0.78)] backdrop-blur-xl dark:border-white/10 dark:bg-[#1a130f]/92 dark:shadow-[0_42px_120px_-72px_rgba(0,0,0,0.85)]">
-          <div className="grid gap-10 px-6 py-8 sm:px-8 sm:py-10 lg:min-h-[78vh] lg:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)] lg:items-center lg:px-12">
+        <article className="overflow-hidden rounded-[2rem] border border-[#604630] bg-[linear-gradient(180deg,rgba(58,38,27,0.34),rgba(27,19,14,0.72))] shadow-[0_42px_120px_-72px_rgba(0,0,0,0.78)] backdrop-blur-[26px] dark:border-white/10 dark:bg-[#1a130f]/92 dark:shadow-[0_42px_120px_-72px_rgba(0,0,0,0.85)]">
+          <div className="grid gap-10 px-5 py-7 sm:px-7 sm:py-9 lg:min-h-[72vh] lg:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)] lg:items-center lg:px-10">
             <div className="min-w-0">
               <p className="font-montserrat text-xs font-semibold uppercase tracking-[0.28em] text-[#9b6a35] dark:text-[#e3b98d]">
                 {eyebrow}
@@ -49,7 +49,7 @@ export default function FeatureSection({
                 {description}
               </p>
               {note && (
-                <div className="mt-6 inline-flex rounded-full border border-[#f3d8b7] bg-[#fff6ea] px-4 py-2 text-xs font-semibold uppercase tracking-[0.14em] text-[#8a5a2a] dark:border-[#6e4a31] dark:bg-[#2b1d15] dark:text-[#f1d3b3]">
+                <div className="mt-6 inline-flex rounded-full border border-[#f3d8b7]/35 bg-[#8a5a2a]/16 px-4 py-2 text-xs font-semibold uppercase tracking-[0.14em] text-[#f1d3b3] dark:border-[#6e4a31] dark:bg-[#2b1d15] dark:text-[#f1d3b3]">
                   {note}
                 </div>
               )}
@@ -58,7 +58,7 @@ export default function FeatureSection({
                 {bullets.map((bullet) => (
                   <div
                     key={bullet}
-                    className="rounded-2xl border border-white/8 bg-white/[0.05] px-4 py-4 text-sm leading-7 text-[#efe2d6] shadow-[0_18px_45px_-38px_rgba(15,23,42,0.22)] dark:border-white/8 dark:bg-[#241913] dark:text-[#efe2d6]"
+                    className="rounded-2xl border border-[#c39569]/14 bg-[#8f6442]/14 px-4 py-4 text-sm leading-7 text-[#efe2d6] shadow-[0_18px_45px_-38px_rgba(15,23,42,0.22)] backdrop-blur-md dark:border-white/8 dark:bg-[#241913] dark:text-[#efe2d6]"
                   >
                     {bullet}
                   </div>
@@ -84,7 +84,7 @@ export default function FeatureSection({
               {metrics.map((metric) => (
                 <div
                   key={metric.label}
-                  className="rounded-[1.6rem] border border-white/8 bg-[linear-gradient(180deg,rgba(255,255,255,0.08),rgba(255,255,255,0.04))] p-5 shadow-[0_28px_75px_-50px_rgba(15,23,42,0.28)] dark:border-white/8 dark:bg-[linear-gradient(180deg,rgba(40,28,21,0.95),rgba(28,20,15,0.94))]"
+                  className="rounded-[1.6rem] border border-[#c39569]/14 bg-[linear-gradient(180deg,rgba(201,146,102,0.14),rgba(255,255,255,0.03))] p-5 shadow-[0_28px_75px_-50px_rgba(15,23,42,0.28)] backdrop-blur-md dark:border-white/8 dark:bg-[linear-gradient(180deg,rgba(40,28,21,0.95),rgba(28,20,15,0.94))]"
                 >
                   <p className="font-montserrat text-xs font-semibold uppercase tracking-[0.18em] text-[#c8b29e] dark:text-[#c8b29e]">
                     {metric.label}

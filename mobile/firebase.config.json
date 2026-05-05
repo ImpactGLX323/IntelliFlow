@@ -1,8 +1,8 @@
 {
-  "apiKey": "",
-  "authDomain": "",
-  "projectId": "",
-  "storageBucket": "",
-  "messagingSenderId": "",
-  "appId": ""
+  "apiKey": "AIzaSyDMdIrYechK19AJPERoRQxIml5piOBHv0U",
+  "authDomain": "intelliflow-c8c4a.firebaseapp.com",
+  "projectId": "intelliflow-c8c4a",
+  "storageBucket": "intelliflow-c8c4a.firebasestorage.app",
+  "messagingSenderId": "24421022620",
+  "appId": "1:24421022620:web:abc47791ddc4e234756659"
 }

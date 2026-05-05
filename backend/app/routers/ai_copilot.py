@@ -1,29 +1,34 @@
+from __future__ import annotations
+
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.orm import Session
+
 from app.agents.orchestrator import CopilotOrchestrator
+from app.auth import get_current_user
 from app.database import get_db
 from app.models import User
 from app.schemas import (
+    AICapabilitiesResponse,
     AICopilotRequest,
     AICopilotResponse,
-    AICapabilitiesResponse,
     AgentRecommendationRead,
     CopilotQueryRequest,
     CopilotQueryResponse,
     RoadmapRequest,
     RoadmapResponse,
 )
-from app.auth import get_current_user
-from app.services import agent_recommendation_service
-from app.services import rag_service
+from app.services import agent_recommendation_service, rag_service
+
 
 router = APIRouter()
+public_router = APIRouter(prefix="/ai-copilot", tags=["ai-copilot"])
+
 
 @router.post("/roadmap", response_model=RoadmapResponse)
 async def generate_roadmap(
     request: RoadmapRequest,
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
 ):
     try:
         roadmap = rag_service.generate_roadmap(db=db, user_id=current_user.id, query=request.query)
@@ -31,18 +36,18 @@ async def generate_roadmap(
     except Exception:
         raise HTTPException(status_code=500, detail="Error generating roadmap")
 
+
 @router.get("/insights")
 async def get_insights(
     db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
 ):
-    """Get quick AI insights about the business"""
     query = "Provide 3-5 key insights about my business performance, inventory status, and sales trends. Be concise and actionable."
     try:
         roadmap = rag_service.generate_roadmap(db=db, user_id=current_user.id, query=query)
         return {
             "insights": roadmap.get("insights", []),
-            "summary": roadmap.get("summary", "")
+            "summary": roadmap.get("summary", ""),
         }
     except Exception:
         raise HTTPException(status_code=500, detail="Error generating insights")
@@ -55,13 +60,6 @@ async def query_copilot(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """
-    Route a natural-language copilot query through the internal MCP layer.
-
-    The orchestrator delegates to MCP resources/tools, which in turn must call
-    service-layer functions. This preserves validation, permissions, and audit
-    behavior instead of letting the AI layer bypass the application stack.
-    """
     orchestrator = CopilotOrchestrator(request.app.state.internal_mcp)
     try:
         result = orchestrator.handle_query(
@@ -76,7 +74,6 @@ async def query_copilot(
             result=result["data"],
             warnings=result.get("warnings", []),
             permission_denied=result.get("upgrade_required", False),
-            request_id=result.get("request_id"),
         )
     except HTTPException:
         raise
@@ -99,6 +96,28 @@ async def ai_copilot_message(
             query=payload.message,
             organization_id=payload.organization_id,
             requested_plan=payload.user_plan,
+        )
+        return AICopilotResponse(**result)
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(status_code=500, detail="Error processing AI copilot request")
+
+
+@public_router.post("/query", response_model=AICopilotResponse)
+async def public_ai_copilot_query(
+    payload: AICopilotRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    orchestrator = CopilotOrchestrator(request.app.state.internal_mcp)
+    try:
+        result = orchestrator.handle_copilot_query(
+            db=db,
+            message=payload.message,
+            organization_id=payload.organization_id,
+            user_plan=payload.user_plan,
+            user_id=payload.user_id,
         )
         return AICopilotResponse(**result)
     except HTTPException:

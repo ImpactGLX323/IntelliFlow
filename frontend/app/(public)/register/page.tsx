@@ -5,29 +5,8 @@ import { useRouter } from 'next/navigation'
 import { useAuth } from '@/contexts/AuthContext'
 import Link from 'next/link'
 import Image from 'next/image'
-import { FirebaseError } from 'firebase/app'
 import logo from '@/docs/images/intelliflow.png'
-
-const getAuthErrorMessage = (error: unknown) => {
-  if (error instanceof FirebaseError) {
-    switch (error.code) {
-      case 'auth/email-already-in-use':
-        return 'An account already exists for this email.'
-      case 'auth/invalid-email':
-        return 'Enter a valid email address.'
-      case 'auth/weak-password':
-        return 'Password should be at least 6 characters.'
-      case 'auth/too-many-requests':
-        return 'Too many attempts. Try again in a few minutes.'
-      default:
-        return error.message || 'Registration failed.'
-    }
-  }
-  if (error instanceof Error) {
-    return error.message
-  }
-  return 'Registration failed.'
-}
+import { getRegisterErrorMessage } from '@/lib/auth/messages'
 
 const isValidEmail = (value: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)
 
@@ -41,6 +20,7 @@ export default function RegisterPage() {
   const [confirmPassword, setConfirmPassword] = useState('')
   const [fullName, setFullName] = useState('')
   const [error, setError] = useState('')
+  const [status, setStatus] = useState('')
   const [loading, setLoading] = useState(false)
   const { register } = useAuth()
   const router = useRouter()
@@ -48,9 +28,10 @@ export default function RegisterPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
+    setStatus('')
 
     if (!isValidEmail(email)) {
-      setError('Enter a valid email address.')
+      setError('Enter a valid work email address.')
       return
     }
 
@@ -68,9 +49,10 @@ export default function RegisterPage() {
 
     try {
       await register(email, password, fullName || undefined)
+      setStatus('Workspace created successfully. Redirecting to your IntelliFlow dashboard...')
       router.push('/dashboard')
     } catch (err: unknown) {
-      setError(getAuthErrorMessage(err))
+      setError(getRegisterErrorMessage(err))
     } finally {
       setLoading(false)
     }
@@ -144,6 +126,11 @@ export default function RegisterPage() {
               {error && (
                 <div className="rounded-2xl border border-red-400/20 bg-red-500/10 px-4 py-3 text-sm text-red-200">
                   {error}
+                </div>
+              )}
+              {status && (
+                <div className="rounded-2xl border border-emerald-400/20 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200">
+                  {status}
                 </div>
               )}
 

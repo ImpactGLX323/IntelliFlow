@@ -32,8 +32,8 @@
 body {
   color: rgb(var(--foreground-rgb));
   background:
-    radial-gradient(circle at 50% -20%, rgba(255, 255, 255, 0.95), transparent 34rem),
-    linear-gradient(180deg, var(--ive-canvas-soft), var(--ive-canvas));
+    radial-gradient(circle at 50% -20%, rgba(187, 145, 109, 0.18), transparent 34rem),
+    linear-gradient(180deg, #e4d4c6, #ccb49c 52%, #b79b82);
   font-feature-settings: "tnum";
 }
 
@@ -49,6 +49,18 @@ body {
 
 html {
   scroll-behavior: smooth;
+}
+
+body::before {
+  content: "";
+  pointer-events: none;
+  position: fixed;
+  inset: 0;
+  background:
+    radial-gradient(circle at 15% 18%, rgba(110, 71, 45, 0.12), transparent 24rem),
+    radial-gradient(circle at 82% 12%, rgba(78, 119, 171, 0.08), transparent 28rem),
+    radial-gradient(circle at 50% 72%, rgba(110, 71, 45, 0.08), transparent 26rem);
+  z-index: 0;
 }
 
 .leaflet-container {
@@ -104,14 +116,14 @@ html {
 
   .hud-workspace {
     background:
-      radial-gradient(circle at 50% 0%, rgba(255, 255, 255, 0.95), transparent 30rem),
-      linear-gradient(180deg, var(--ive-canvas-soft), var(--ive-canvas));
+      radial-gradient(circle at 50% 0%, rgba(197, 153, 116, 0.26), transparent 30rem),
+      linear-gradient(180deg, #eadfd4, #cfb9a4);
   }
 
   .hud-public {
     background:
-      radial-gradient(circle at 50% -12%, rgba(255, 255, 255, 0.9), transparent 32rem),
-      linear-gradient(180deg, #f8f8f6, #eeeeeb);
+      radial-gradient(circle at 50% -12%, rgba(197, 153, 116, 0.22), transparent 32rem),
+      linear-gradient(180deg, #efe2d4, #d7c1aa 54%, #bea489);
   }
 
   .hud-readout {
@@ -209,5 +221,21 @@ html {
 
   .app-button-secondary:active {
     transform: scale(0.97);
+  }
+
+  .home-reveal {
+    opacity: 0;
+    transform: perspective(1400px) translateY(48px) scale(0.965) rotateX(6deg);
+    transition:
+      opacity 700ms ease,
+      transform 850ms cubic-bezier(0.22, 1, 0.36, 1),
+      filter 700ms ease;
+    filter: blur(10px);
+  }
+
+  .home-reveal-visible {
+    opacity: 1;
+    transform: perspective(1400px) translateY(0) scale(1) rotateX(0deg);
+    filter: blur(0);
   }
 }

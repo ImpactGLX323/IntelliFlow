@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import Image from 'next/image'
 import Link from 'next/link'
 import logo from '@/docs/images/intelliflow.png'
@@ -21,6 +21,18 @@ type HeaderProps = {
 
 export default function Header({ theme = 'light', onToggleTheme }: HeaderProps) {
   const [open, setOpen] = useState(false)
+  const [showModeOrb, setShowModeOrb] = useState(false)
+
+  useEffect(() => {
+    if (!showModeOrb) return
+    const timer = window.setTimeout(() => setShowModeOrb(false), 5000)
+    return () => window.clearTimeout(timer)
+  }, [showModeOrb])
+
+  const handleToggleTheme = () => {
+    onToggleTheme?.()
+    setShowModeOrb(true)
+  }
 
   return (
     <header className="sticky top-0 z-50 border-b border-[#7a5639] bg-[rgba(62,40,26,0.94)] text-white backdrop-blur-xl shadow-[0_18px_55px_-42px_rgba(15,23,42,0.62)]">
@@ -42,10 +54,22 @@ export default function Header({ theme = 'light', onToggleTheme }: HeaderProps) 
         </nav>
 
         <div className="hidden items-center gap-3 md:flex">
+          <div
+            className={`overflow-hidden transition-all duration-300 ${showModeOrb ? 'w-11 opacity-100' : 'w-0 opacity-0'}`}
+            aria-hidden={!showModeOrb}
+          >
+            <div
+              className={`h-11 w-11 rounded-full border border-[#8a6545] shadow-[0_16px_40px_-22px_rgba(0,0,0,0.55)] transition-all duration-300 ${
+                theme === 'dark'
+                  ? 'bg-[radial-gradient(circle_at_35%_35%,#ffffff,#d4d4d4_55%,#575757)]'
+                  : 'bg-[radial-gradient(circle_at_35%_35%,#313131,#121212_60%,#000000)]'
+              }`}
+            />
+          </div>
           {onToggleTheme && (
             <button
               type="button"
-              onClick={onToggleTheme}
+              onClick={handleToggleTheme}
               className="rounded-full border border-[#8a6545] bg-[#583c28] px-4 py-2 text-xs font-semibold uppercase tracking-[0.14em] text-[#fff4ea] transition-all duration-200 hover:scale-[1.03] hover:bg-[#6d4a32] hover:shadow-md active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#f0d7be] focus-visible:ring-offset-2 focus-visible:ring-offset-[#3e281a]"
             >
               {theme === 'dark' ? 'Light Mode' : 'Dark Mode'}
@@ -92,7 +116,7 @@ export default function Header({ theme = 'light', onToggleTheme }: HeaderProps) 
               <button
                 type="button"
                 onClick={() => {
-                  onToggleTheme()
+                  handleToggleTheme()
                   setOpen(false)
                 }}
                 className="rounded-2xl border border-[#8a6545] bg-[#583c28] px-4 py-3 text-sm font-semibold uppercase tracking-[0.14em] text-[#fff4ea] transition-all duration-200 hover:bg-[#6d4a32] active:scale-[0.99]"

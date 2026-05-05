@@ -1,7 +1,10 @@
 import fs from 'fs'
 import path from 'path'
 
-const envPath = path.resolve(process.cwd(), '.env')
+const candidateEnvPaths = [
+  path.resolve(process.cwd(), '.env'),
+  path.resolve(process.cwd(), '..', '.env'),
+]
 const outPath = path.resolve(process.cwd(), 'firebase.config.json')
 
 const parseEnv = (content) =>
@@ -18,15 +21,25 @@ const parseEnv = (content) =>
       return acc
     }, {})
 
-const env = fs.existsSync(envPath) ? parseEnv(fs.readFileSync(envPath, 'utf8')) : {}
+const envPath = candidateEnvPaths.find((candidate) => fs.existsSync(candidate))
+const env = envPath ? parseEnv(fs.readFileSync(envPath, 'utf8')) : {}
+
+const readConfigValue = (...keys) => {
+  for (const key of keys) {
+    if (env[key]) {
+      return env[key]
+    }
+  }
+  return ''
+}
 
 const config = {
-  apiKey: env.EXPO_PUBLIC_FIREBASE_API_KEY || '',
-  authDomain: env.EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN || '',
-  projectId: env.EXPO_PUBLIC_FIREBASE_PROJECT_ID || '',
-  storageBucket: env.EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET || '',
-  messagingSenderId: env.EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID || '',
-  appId: env.EXPO_PUBLIC_FIREBASE_APP_ID || '',
+  apiKey: readConfigValue('EXPO_PUBLIC_FIREBASE_API_KEY', 'NEXT_PUBLIC_FIREBASE_API_KEY'),
+  authDomain: readConfigValue('EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN', 'NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN'),
+  projectId: readConfigValue('EXPO_PUBLIC_FIREBASE_PROJECT_ID', 'NEXT_PUBLIC_FIREBASE_PROJECT_ID'),
+  storageBucket: readConfigValue('EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET', 'NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET'),
+  messagingSenderId: readConfigValue('EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID', 'NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID'),
+  appId: readConfigValue('EXPO_PUBLIC_FIREBASE_APP_ID', 'NEXT_PUBLIC_FIREBASE_APP_ID'),
 }
 
 fs.writeFileSync(outPath, `${JSON.stringify(config, null, 2)}\n`)
