@@ -16,7 +16,7 @@ export const darkColors = {
   danger: '#d85a5a',
   success: '#2ea56f',
   warning: '#f6b44a',
-  header: '#2c1d15',
+  header: '#84481f',
   tracker: '#34231a',
   track: 'rgba(255,255,255,0.08)',
 }
@@ -39,7 +39,7 @@ export const lightColors = {
   danger: '#d85a5a',
   success: '#2e8a5f',
   warning: '#d8982e',
-  header: '#fffaf5',
+  header: '#84481f',
   tracker: '#f2e6da',
   track: 'rgba(74, 51, 35, 0.1)',
 }

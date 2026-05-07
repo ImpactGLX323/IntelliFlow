@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from app.mcp.client import resolve_plan_level
 from app.mcp.schemas import PlanLevel
 from app.models import AgentRecommendation, User
+from app.agents.orchestrator import PLAN_GUARDRAILS
 
 
 PLAN_DOMAIN_ACCESS = {
@@ -91,6 +92,7 @@ def get_allowed_domains(user: User) -> list[str]:
 def get_capabilities(user: User) -> dict[str, Any]:
     plan_level = resolve_plan_level(user)
     allowed_domains = PLAN_DOMAIN_ACCESS[plan_level]
+    guardrails = PLAN_GUARDRAILS[plan_level]
     return {
         "plan_level": plan_level.value,
         "allowed_domains": sorted(allowed_domains),
@@ -101,6 +103,12 @@ def get_capabilities(user: User) -> dict[str, Any]:
             "compliance_rag": "rag" in allowed_domains,
             "logistics_control_tower": "logistics" in allowed_domains,
             "advanced_recommendations": plan_level == PlanLevel.BOOST,
+        },
+        "guardrails": {
+            "max_chars": guardrails["max_chars"],
+            "max_lines": guardrails["max_lines"],
+            "allow_general_fallback": guardrails["allow_general_fallback"],
+            "message": "Copilot is restricted to IntelliFlow operational questions and tighter prompt sizes on lower plans.",
         },
     }
 

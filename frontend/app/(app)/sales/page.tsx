@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import PlanAccessNotice from '@/components/ui/PlanAccessNotice'
+import QuickProductCreateForm from '@/components/ui/QuickProductCreateForm'
 import StructuredDataPanel from '@/components/ui/StructuredDataPanel'
 import { copilotAPI, productsAPI, salesAPI } from '@/lib/api'
 import { formatCurrency } from '@/lib/utils/format'
@@ -64,6 +65,16 @@ function extractBestSellerItems(data: Record<string, unknown> | null | undefined
   return []
 }
 
+function downloadCsvFile(blob: BlobPart, filename: string) {
+  const file = new Blob([blob], { type: 'text/csv;charset=utf-8;' })
+  const url = URL.createObjectURL(file)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = filename
+  link.click()
+  URL.revokeObjectURL(url)
+}
+
 export default function SalesPage() {
   const [sales, setSales] = useState<Sale[]>([])
   const [products, setProducts] = useState<Product[]>([])
@@ -112,6 +123,15 @@ export default function SalesPage() {
     }
   }
 
+  const exportSalesCsv = async () => {
+    try {
+      const response = await salesAPI.exportCsv()
+      downloadCsvFile(response.data, 'intelliflow-sales.csv')
+    } catch (error) {
+      console.error('Failed to export sales CSV:', error)
+    }
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     try {
@@ -147,6 +167,15 @@ export default function SalesPage() {
 
   const totalRevenue = sales.reduce((sum, sale) => sum + sale.total_amount, 0)
   const bestSellerItems = extractBestSellerItems(salesInsight?.data)
+
+  const handleProductCreated = async (product: Product) => {
+    await loadProducts()
+    setFormData((current) => ({
+      ...current,
+      product_id: String(product.id),
+      unit_price: current.unit_price || String(product.price ?? ''),
+    }))
+  }
 
   return (
     <div className="space-y-6 overflow-x-hidden">
@@ -251,12 +280,21 @@ export default function SalesPage() {
           >
             {showForm ? 'Close form' : 'Record sale'}
           </button>
+          <button
+            onClick={exportSalesCsv}
+            className="font-montserrat mt-3 rounded-full border border-white/12 bg-white/[0.04] px-5 py-3 text-sm font-semibold uppercase tracking-[0.08em] text-white/82"
+          >
+            Export sales CSV
+          </button>
         </div>
       </section>
 
       {showForm && (
         <section className="app-surface min-w-0 rounded-[1.5rem] p-5 sm:rounded-[1.9rem] sm:p-6">
           <h2 className="font-montserrat text-2xl font-semibold text-white">Record new sale</h2>
+          <div className="mt-5">
+            <QuickProductCreateForm onCreated={handleProductCreated} />
+          </div>
           <form onSubmit={handleSubmit} className="mt-6 grid min-w-0 gap-5 md:grid-cols-2">
             <div className="min-w-0">
               <label className="font-montserrat text-xs font-semibold uppercase tracking-[0.12em] text-white/46">Product</label>

@@ -11,17 +11,16 @@ export default function MobileHeader({
   onLogoPress,
   theme,
 }) {
-  const isDark = theme?.mode === 'dark';
   return (
-    <View style={[styles.wrap, { backgroundColor: isDark ? '#2c1d15' : '#fffaf5', borderBottomColor: isDark ? 'rgba(236,207,181,0.14)' : 'rgba(111,79,52,0.1)' }]}>
+    <View style={[styles.wrap, { backgroundColor: theme?.header || '#84481f' }]}>
       <View style={styles.row}>
         <View style={styles.side}>{left}</View>
         <Pressable onPress={onLogoPress} style={styles.center}>
-          <IntelliFlowLogo size="md" centerAligned variant={isDark ? 'light' : 'dark'} />
+          <IntelliFlowLogo size="md" centerAligned variant="light" />
         </Pressable>
         <View style={[styles.side, styles.sideRight]}>{right}</View>
       </View>
-      {subtitle ? <Text style={[styles.subtitle, { color: isDark ? 'rgba(255,239,226,0.58)' : 'rgba(36,22,15,0.58)' }]}>{subtitle}</Text> : null}
+      {subtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
     </View>
   );
 }
@@ -32,8 +31,8 @@ const styles = StyleSheet.create({
     paddingTop: 10,
     paddingBottom: 10,
     borderBottomWidth: 1,
-    borderBottomColor: 'rgba(111,79,52,0.1)',
-    backgroundColor: 'rgba(255,255,255,0.9)',
+    borderBottomColor: 'rgba(255, 220, 186, 0.14)',
+    backgroundColor: '#84481f',
   },
   row: {
     minHeight: 56,
@@ -55,7 +54,7 @@ const styles = StyleSheet.create({
   subtitle: {
     textAlign: 'center',
     fontSize: responsiveFont(12),
-    color: 'rgba(36,22,15,0.58)',
+    color: 'rgba(255, 244, 234, 0.72)',
     marginTop: 2,
   },
 });

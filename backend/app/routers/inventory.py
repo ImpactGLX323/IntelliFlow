@@ -1,6 +1,6 @@
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from sqlalchemy.orm import Session
 
 from app.auth import get_current_user
@@ -8,6 +8,8 @@ from app.core.plan import require_plan
 from app.database import get_db
 from app.models import InventoryTransaction, Product, StockReservation, User, Warehouse
 from app.schemas import (
+    CsvImportRequest,
+    CsvImportResult,
     InventoryTransactionRead,
     ReceivePurchaseRequest,
     StockAdjustmentRequest,
@@ -20,6 +22,7 @@ from app.schemas import (
     WarehouseRead,
     WarehouseUpdate,
 )
+from app.services.csv_service import export_warehouses_csv, import_warehouses_csv
 from app.services.stock_ledger_service import (
     adjust_stock,
     consume_reservation,
@@ -253,6 +256,28 @@ async def get_warehouses(
 ):
     get_default_warehouse(db, owner_id=current_user.id)
     return db.query(Warehouse).filter(Warehouse.owner_id == current_user.id).order_by(Warehouse.name.asc()).all()
+
+
+@router.get("/warehouses/export/csv")
+async def get_warehouses_csv(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    csv_content = export_warehouses_csv(db, user=current_user)
+    return Response(
+        content=csv_content,
+        media_type="text/csv",
+        headers={"Content-Disposition": 'attachment; filename="intelliflow-warehouses.csv"'},
+    )
+
+
+@router.post("/warehouses/import/csv", response_model=CsvImportResult)
+async def post_warehouses_csv_import(
+    payload: CsvImportRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    return import_warehouses_csv(db, user=current_user, csv_text=payload.csv_text)
 
 
 @router.post("/warehouses", response_model=WarehouseRead, status_code=status.HTTP_201_CREATED)

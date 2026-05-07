@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy.orm import Session
 from typing import List
 from datetime import datetime, timedelta
@@ -6,6 +6,7 @@ from app.database import get_db
 from app.models import Sale, Product, User, InventoryHistory
 from app.schemas import SaleCreate, SaleResponse
 from app.auth import get_current_user
+from app.services.csv_service import export_sales_csv
 from app.services.stock_ledger_service import (
     create_inventory_transaction,
     get_default_warehouse,
@@ -15,6 +16,19 @@ from app.services.stock_ledger_service import (
 from app.services.notification_service import create_notification
 
 router = APIRouter()
+
+
+@router.get("/export/csv")
+async def get_sales_csv(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    csv_content = export_sales_csv(db, user=current_user)
+    return Response(
+        content=csv_content,
+        media_type="text/csv",
+        headers={"Content-Disposition": 'attachment; filename="intelliflow-sales.csv"'},
+    )
 
 @router.post("/", response_model=SaleResponse, status_code=status.HTTP_201_CREATED)
 async def create_sale(

@@ -1,20 +1,64 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy.orm import Session
 from typing import List
 import logging
 from app.database import get_db
 from app.models import Product, User
-from app.schemas import ProductCreate, ProductUpdate, ProductResponse
+from app.schemas import CsvImportRequest, CsvImportResult, ProductCreate, ProductUpdate, ProductResponse
 from app.auth import get_current_user
+from app.services.csv_service import export_products_csv, import_products_csv
 from app.services.stock_ledger_service import (
     adjust_stock,
     get_default_warehouse,
+    get_stock_position,
     seed_product_stock_from_legacy_current_stock,
     sync_product_current_stock,
 )
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
+
+
+def _serialize_product(db: Session, product: Product) -> dict:
+    position = get_stock_position(db, product.id)
+    return {
+        "id": product.id,
+        "name": product.name,
+        "sku": product.sku,
+        "description": product.description,
+        "category": product.category,
+        "price": product.price,
+        "cost": product.cost,
+        "current_stock": product.current_stock,
+        "on_hand": position["on_hand"],
+        "reserved": position["reserved"],
+        "available_stock": position["available"],
+        "min_stock_threshold": product.min_stock_threshold,
+        "supplier": product.supplier,
+        "created_at": product.created_at,
+    }
+
+
+@router.get("/export/csv")
+async def get_products_csv(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    csv_content = export_products_csv(db, user=current_user)
+    return Response(
+        content=csv_content,
+        media_type="text/csv",
+        headers={"Content-Disposition": 'attachment; filename="intelliflow-products.csv"'},
+    )
+
+
+@router.post("/import/csv", response_model=CsvImportResult)
+async def post_products_csv_import(
+    payload: CsvImportRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    return import_products_csv(db, user=current_user, csv_text=payload.csv_text)
 
 @router.post("/", response_model=ProductResponse, status_code=status.HTTP_201_CREATED)
 async def create_product(
@@ -58,7 +102,7 @@ async def create_product(
             created_by=current_user.id,
         )
         db.refresh(db_product)
-        return db_product
+        return _serialize_product(db, db_product)
     except Exception:
         logger.exception(
             "Create product failed",
@@ -78,7 +122,7 @@ async def get_products(
     ).offset(skip).limit(limit).all()
     for product in products:
         sync_product_current_stock(db, product.id)
-    return products
+    return [_serialize_product(db, product) for product in products]
 
 @router.get("/{product_id}", response_model=ProductResponse)
 async def get_product(
@@ -96,7 +140,7 @@ async def get_product(
             detail="Product not found"
         )
     sync_product_current_stock(db, product.id)
-    return product
+    return _serialize_product(db, product)
 
 @router.put("/{product_id}", response_model=ProductResponse)
 async def update_product(
@@ -139,7 +183,7 @@ async def update_product(
                 created_by=current_user.id,
             )
             db.refresh(product)
-    return product
+    return _serialize_product(db, product)
 
 @router.delete("/{product_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_product(

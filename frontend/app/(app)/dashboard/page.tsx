@@ -18,6 +18,22 @@ import {
   ResponsiveContainer,
 } from 'recharts'
 
+function asNumber(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value
+  }
+  if (typeof value === 'string') {
+    const parsed = Number(value)
+    return Number.isFinite(parsed) ? parsed : null
+  }
+  return null
+}
+
+function formatFixed(value: unknown, digits: number) {
+  const numeric = asNumber(value)
+  return numeric === null ? null : numeric.toFixed(digits)
+}
+
 export default function DashboardPage() {
   const { user } = useAuth()
   const [stats, setStats] = useState<DashboardStats | null>(null)
@@ -99,6 +115,9 @@ export default function DashboardPage() {
       </div>
     )
   }
+
+  const firstRate = bnmRates?.rates?.[0]
+  const formattedBnmRate = formatFixed(firstRate?.rate, 4)
 
   return (
     <div className="space-y-6">
@@ -316,7 +335,9 @@ export default function DashboardPage() {
             <div className="app-surface-soft rounded-[1.35rem] p-4">
               <p className="font-montserrat text-[11px] uppercase tracking-[0.18em] text-white/38">BNM FX support</p>
               <p className="font-montserrat mt-3 text-lg font-semibold text-white">
-                {bnmRates?.rates?.[0] ? `1 ${bnmRates.rates[0].base_currency} = ${bnmRates.rates[0].rate.toFixed(4)} ${bnmRates.rates[0].quote_currency}` : 'No rate available'}
+                {firstRate && formattedBnmRate
+                  ? `1 ${firstRate.base_currency} = ${formattedBnmRate} ${firstRate.quote_currency}`
+                  : 'No rate available'}
               </p>
               <p className="font-lexend mt-3 text-xs leading-6 text-white/48">
                 Official BNM dataset where available. Later reused for landed-cost and purchasing support.

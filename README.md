@@ -1,185 +1,349 @@
-# IntelliFlow - E-commerce Analytics & AI Copilot
+# IntelliFlow
 
-A comprehensive web application that helps e-commerce sellers and dropshippers analyze inventory and sales data, identify best-selling products, detect risks, and generate AI-powered actionable task roadmaps using Retrieval-Augmented Generation (RAG).
+IntelliFlow is a FastAPI, Next.js, and Expo platform for inventory control, sales and purchasing operations, returns analytics, logistics intelligence, MCP/RAG-backed copilots, notifications, CSV workflows, demo mode, and LHDN-ready e-invoicing preparation.
 
-## Features
+## Product Areas
 
-- **Analytics Dashboard**: Real-time insights into revenue, orders, products, and stock alerts
-- **Product Management**: Track inventory, prices, costs, and suppliers
-- **Sales Tracking**: Record and analyze sales data
-- **Risk Detection**: Automated alerts for low stock and inventory issues
-- **AI Copilot**: Generate actionable roadmaps using RAG-powered AI analysis
-- **Best Sellers Analysis**: Identify top-performing products
-- **Trend Visualization**: Interactive charts for revenue and sales trends
+- Inventory
+  - ledger-first stock position
+  - stock receiving, adjustment, reservation, release, consume, transfer
+  - warehouse management
+  - inventory risks and low-stock visibility
+  - CSV import/export for products, suppliers, and warehouses
+- Sales
+  - customers
+  - direct sales records
+  - sales orders with confirmation and fulfillment
+  - best-seller and sales insight surfaces
+  - CSV export
+- Purchasing
+  - suppliers
+  - purchase orders
+  - ordered and received states
+  - CSV export
+- Returns
+  - return orders
+  - return intake and refund flows
+  - profit leakage and high-return analytics
+- Logistics
+  - shipments, route legs, ports, routes
+  - delayed shipment detection
+  - delay impact analysis
+  - Indo-Pacific and Malaysian port/route preview intelligence
+- MCP + RAG
+  - internal MCP registry and tool routing
+  - inventory, sales, returns, logistics, RAG, and free integration MCP domains
+  - AI Copilot orchestration with plan-aware guardrails
+- E-Invoicing
+  - LHDN-ready e-invoicing preparation from recorded sales
+  - readiness and validation status tracking
+- Notifications
+  - unread list
+  - mark-read flow
+  - per-category preferences
+  - tiered operational alert categories
+- Free Integrations
+  - warehouse directory preview
+  - Malaysia port-risk preview
+  - BNM rates
+  - Malaysia demand signals
+  - marketplace and market-intelligence provider stubs with truthful `not_configured` behavior
+
+## Plan Tiers
+
+- Free
+  - inventory starter
+  - public/free integrations
+  - basic notifications
+  - basic inventory MCP and copilot workflows
+- Premium
+  - multi-step operations
+  - sales, purchasing, returns, reorder, basic RAG
+  - own-store marketplace integration stubs
+- Boost
+  - logistics control tower
+  - advanced logistics and compliance flows
+  - advanced recommendations
+  - market-intelligence provider stubs
 
 ## Tech Stack
 
 ### Backend
-- **Framework**: FastAPI (Python)
-- **Database**: PostgreSQL with SQLAlchemy ORM
-- **Vector Store**: FAISS for RAG
-- **LLM**: LangChain + OpenAI-compatible API
-- **Authentication**: JWT
+- FastAPI
+- SQLAlchemy
+- Alembic
+- PostgreSQL
+- OpenAI-compatible provider path for copilot and RAG
+- Firebase-backed auth integration
 
-### Frontend
-- **Framework**: Next.js 14 with TypeScript
-- **Styling**: Tailwind CSS
-- **Charts**: Recharts
-- **HTTP Client**: Axios
+### Web
+- Next.js 14
+- TypeScript
+- Tailwind CSS
 
-## Project Structure
+### Mobile
+- Expo / React Native
+- centralized API client
+- branded loading, demo bootstrapping, and plan-aware workspaces
 
-```
-IntelliFlow/
-├── backend/
-│   ├── app/
-│   │   ├── __init__.py
-│   │   ├── main.py
-│   │   ├── database.py
-│   │   ├── models.py
-│   │   ├── schemas.py
-│   │   ├── auth.py
-│   │   ├── rag_system.py
-│   │   └── routers/
-│   │       ├── auth.py
-│   │       ├── products.py
-│   │       ├── sales.py
-│   │       ├── analytics.py
-│   │       └── ai_copilot.py
-│   ├── requirements.txt
-│   └── README.md
-├── frontend/
-│   ├── app/
-│   │   ├── layout.tsx
-│   │   ├── page.tsx
-│   │   ├── login/
-│   │   ├── register/
-│   │   ├── dashboard/
-│   │   ├── products/
-│   │   ├── sales/
-│   │   └── copilot/
-│   ├── components/
-│   ├── contexts/
-│   ├── lib/
-│   ├── package.json
-│   └── tsconfig.json
-└── README.md
+## Current Architecture
+
+```text
+Frontend / Mobile
+  -> FastAPI routers
+    -> service layer
+      -> stock ledger / analytics / logistics / notifications / integrations
+        -> MCP client and MCP tool registry
+          -> AI Copilot orchestrator
 ```
 
-## Setup Instructions
+Key backend areas:
 
-### Backend Setup
+- `backend/app/routers/`
+- `backend/app/services/`
+- `backend/app/mcp/`
+- `backend/app/agents/`
+- `backend/app/integrations/`
 
-1. Navigate to the backend directory:
+Key client areas:
+
+- `frontend/app/`
+- `frontend/components/`
+- `mobile/src/`
+
+## Main Backend Routes
+
+### System and Demo
+- `GET /health`
+- `GET /ready`
+- `GET /public/app-config`
+- `POST /demo/bootstrap`
+- `POST /demo/login`
+
+### Auth
+- `POST /api/auth/register`
+- `GET /api/auth/me`
+
+### Inventory and Operations
+- `GET /api/products/`
+- `POST /api/products/`
+- `GET /api/inventory/transactions`
+- `POST /api/inventory/receive`
+- `POST /api/inventory/adjust`
+- `POST /api/inventory/transfer`
+- `GET /api/warehouses`
+- `POST /api/warehouses`
+- `GET /api/reorder/suggestions`
+
+### Sales / Purchasing / Returns
+- `GET /api/sales/`
+- `POST /api/sales/`
+- `GET /api/sales-orders/`
+- `POST /api/sales-orders/`
+- `GET /api/purchase-orders/`
+- `POST /api/purchase-orders/`
+- `GET /api/returns/`
+- `POST /api/returns/`
+
+### Logistics
+- `GET /api/shipments`
+- `POST /api/shipments`
+- `GET /api/shipments/analytics/delayed`
+- `GET /api/routes`
+- `GET /api/ports`
+- `GET /public/logistics/indo-pacific-ship-flow`
+
+### AI / MCP
+- `POST /ai-copilot/query`
+- `GET /api/ai/capabilities`
+- `GET /api/ai/recommendations`
+- `GET /mcp-dev/registry`
+- `POST /mcp-dev/tools/{tool_name}`
+- `POST /mcp-dev/resources/read`
+
+### Notifications
+- `GET /api/notifications/`
+- `GET /api/notifications/unread-count`
+- `POST /api/notifications/{notification_id}/read`
+- `GET /api/notifications/preferences`
+- `PUT /api/notifications/preferences/{category}`
+- `POST /api/notifications/devices`
+
+### E-Invoicing
+- `GET /api/einvoicing/summary`
+- `GET /api/einvoicing/documents`
+- `POST /api/einvoicing/from-sale/{sale_id}`
+
+### Free Integrations
+- `GET /integrations/free/registry`
+- `GET /integrations/free/status`
+- `GET /integrations/free/warehouses/malaysia`
+- `GET /integrations/free/warehouses/nearby`
+- `GET /integrations/free/logistics/malaysia-port-risk`
+- `GET /integrations/free/finance/bnm-rates`
+- `GET /integrations/free/market/malaysia-demand-signals`
+
+## Web App Coverage
+
+The web app currently includes working pages for:
+
+- Dashboard
+- Inventory
+- Sales
+- Purchasing
+- Transfers
+- Returns
+- Logistics
+- Compliance / MCP + RAG
+- E-Invoicing
+- AI Copilot
+- Notifications
+- Plans
+
+## Mobile App Coverage
+
+The mobile app currently includes working screens for:
+
+- startup, login, register, loading, service unavailable
+- dashboard / overview
+- inventory
+- sales
+- purchasing
+- returns
+- logistics
+- compliance
+- e-invoicing
+- AI copilot
+- plans
+- notifications
+- profile/account
+
+## Copilot and RAG
+
+The copilot is:
+
+- plan-aware
+- MCP-routed
+- guarded against off-topic and oversized prompts on lower tiers
+- able to fall back safely when provider/runtime issues occur
+
+Important:
+
+- preview data is labeled preview
+- demand signals are not mislabeled as real national sales
+- paid-provider workflows return `not_configured` instead of fake live claims
+
+## Notifications
+
+Implemented notification categories include:
+
+- Free
+  - low stock
+  - stock received
+  - stock adjusted
+  - stock deducted
+  - account/system alerts
+- Premium
+  - sales order alerts
+  - purchase order due/overdue
+  - reorder suggestions
+  - return spike
+  - profit leakage
+  - weekly operations summary
+  - basic RAG alerts
+- Boost
+  - shipment delayed
+  - customs hold
+  - port pressure high
+  - route risk increased
+  - supplier risk warning
+  - AI recommendation created
+  - compliance risk detected
+  - approval required
+  - daily operations brief
+
+## CSV Support
+
+Current CSV support:
+
+- Products import/export
+- Suppliers import/export
+- Warehouses import/export
+- Sales export
+- Purchase orders export
+
+## Local Startup
+
+### Backend
+
 ```bash
 cd backend
+source venv/bin/activate
+alembic upgrade head
+uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
-2. Create a virtual environment:
-```bash
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-```
+### Frontend
 
-3. Install dependencies:
-```bash
-pip install -r requirements.txt
-```
-
-4. Set up PostgreSQL database and create a `.env` file:
-```bash
-cp .env.example .env
-# Edit .env with your database credentials and API keys
-```
-
-5. Update `.env` with:
-   - `DATABASE_URL`: PostgreSQL connection string
-   - `SECRET_KEY`: JWT secret key
-   - `OPENAI_API_KEY`: Your OpenAI API key
-   - `OPENAI_BASE_URL`: OpenAI API base URL (default: https://api.openai.com/v1)
-
-6. Run the server:
-```bash
-uvicorn app.main:app --reload --port 8000
-```
-
-The API will be available at `http://localhost:8000`
-- Swagger UI: http://localhost:8000/docs
-- ReDoc: http://localhost:8000/redoc
-
-### Frontend Setup
-
-1. Navigate to the frontend directory:
 ```bash
 cd frontend
-```
-
-2. Install dependencies:
-```bash
+rm -rf .next
+export NEXT_PUBLIC_API_URL=http://127.0.0.1:8000
 npm install
-```
-
-3. Create a `.env.local` file:
-```bash
-cp .env.local.example .env.local
-# Update NEXT_PUBLIC_API_URL if needed
-```
-
-4. Run the development server:
-```bash
 npm run dev
 ```
 
-The frontend will be available at `http://localhost:3000`
+### Mobile
 
-## Usage
+iOS simulator:
 
-1. **Register/Login**: Create an account or sign in
-2. **Add Products**: Go to Products page and add your inventory
-3. **Record Sales**: Record sales transactions
-4. **View Dashboard**: See analytics and trends
-5. **Use AI Copilot**: Ask questions and get AI-powered roadmaps
-
-## API Endpoints
-
-### Authentication
-- `POST /api/auth/register` - Register new user
-- `POST /api/auth/login` - Login
-- `GET /api/auth/me` - Get current user
-
-### Products
-- `GET /api/products/` - List products
-- `POST /api/products/` - Create product
-- `GET /api/products/{id}` - Get product
-- `PUT /api/products/{id}` - Update product
-- `DELETE /api/products/{id}` - Delete product
-
-### Sales
-- `GET /api/sales/` - List sales
-- `POST /api/sales/` - Create sale
-- `GET /api/sales/{id}` - Get sale
-
-### Analytics
-- `GET /api/analytics/dashboard` - Get dashboard stats
-- `GET /api/analytics/best-sellers` - Get best sellers
-- `GET /api/analytics/inventory-risks` - Get inventory risks
-
-### AI Copilot
-- `POST /api/ai/roadmap` - Generate roadmap
-- `GET /api/ai/insights` - Get quick insights
-
-## Development
-
-### Database Migrations
-
-If you need to create database migrations:
 ```bash
-alembic init alembic
-alembic revision --autogenerate -m "Initial migration"
-alembic upgrade head
+cd mobile
+export EXPO_PUBLIC_API_URL=http://127.0.0.1:8000
+npm install
+npx expo start -c
 ```
 
-## License
+Real device:
 
-MIT
+```bash
+cd mobile
+export EXPO_PUBLIC_API_URL=http://YOUR_MAC_LAN_IP:8000
+npm install
+npx expo start -c
+```
 
+## Environment Notes
+
+Backend `.env` commonly needs:
+
+- `DATABASE_URL`
+- `SECRET_KEY`
+- `OPENAI_API_KEY`
+- `OPENAI_BASE_URL`
+- `AI_PROVIDER`
+- Firebase admin configuration
+
+Frontend:
+
+- `NEXT_PUBLIC_API_URL`
+
+Mobile:
+
+- `EXPO_PUBLIC_API_URL`
+
+## Demo Mode
+
+The project supports demo mode with:
+
+- backend bootstrap/login endpoints
+- seeded operational demo data
+- mobile auto-bootstrap support
+- preview/offline fallback behavior
+
+## Related Docs
+
+- [docs/FEATURE_COMPLETION_AUDIT.md](/Users/sami/IntelliFlow/docs/FEATURE_COMPLETION_AUDIT.md)
+- [docs/FREE_API_INTEGRATIONS.md](/Users/sami/IntelliFlow/docs/FREE_API_INTEGRATIONS.md)
+- [backend/docs/demo_mode.md](/Users/sami/IntelliFlow/backend/docs/demo_mode.md)
+- [DOCKER.md](/Users/sami/IntelliFlow/DOCKER.md)

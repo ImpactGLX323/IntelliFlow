@@ -18,6 +18,67 @@ PLAN_ORDER = {
     PlanLevel.BOOST: 2,
 }
 
+PLAN_GUARDRAILS = {
+    PlanLevel.FREE: {
+        "max_chars": 180,
+        "max_lines": 3,
+        "allowed_intents": {"inventory", "warehouse_directory", "port_risk", "market_signals", "finance", "general"},
+        "allow_general_fallback": False,
+    },
+    PlanLevel.PRO: {
+        "max_chars": 320,
+        "max_lines": 5,
+        "allowed_intents": {"inventory", "sales", "returns", "rag", "warehouse_directory", "port_risk", "market_signals", "finance", "general"},
+        "allow_general_fallback": False,
+    },
+    PlanLevel.BOOST: {
+        "max_chars": 700,
+        "max_lines": 10,
+        "allowed_intents": {"inventory", "sales", "returns", "logistics", "rag", "warehouse_directory", "port_risk", "market_signals", "finance", "general"},
+        "allow_general_fallback": True,
+    },
+}
+
+OFF_TOPIC_TOKENS = {
+    "joke",
+    "poem",
+    "story",
+    "lyrics",
+    "girlfriend",
+    "boyfriend",
+    "romance",
+    "horoscope",
+    "movie",
+    "celebrity",
+    "meme",
+    "game",
+    "gaming",
+    "politics",
+}
+
+BUSINESS_TOKENS = {
+    "inventory",
+    "stock",
+    "warehouse",
+    "sales",
+    "revenue",
+    "return",
+    "refund",
+    "supplier",
+    "shipment",
+    "port",
+    "customs",
+    "compliance",
+    "invoice",
+    "product",
+    "sku",
+    "logistics",
+    "transport",
+    "lhdn",
+    "bnm",
+    "demand",
+}
+
 
 @dataclass(frozen=True)
 class CopilotResolution:
@@ -87,9 +148,14 @@ class CopilotOrchestrator:
         user_id: str | None = None,
     ) -> dict[str, Any]:
         _ = organization_id
-        intent = classify_intent(message)
-        resolution = self._resolve_intent(intent=intent, message=message)
+        normalized_message = self._normalize_message(message)
         current_plan = resolve_plan_level(user) if user is not None else parse_plan_level(user_plan)
+        guardrail_response = self._apply_guardrails(message=normalized_message, current_plan=current_plan)
+        if guardrail_response is not None:
+            return guardrail_response
+
+        intent = classify_intent(normalized_message)
+        resolution = self._resolve_intent(intent=intent, message=normalized_message)
 
         if not self._has_plan_access(current_plan, resolution.required_plan):
             return self._upgrade_response(
@@ -139,7 +205,7 @@ class CopilotOrchestrator:
         recommendations = self._extract_recommendations(data)
         answer = generate_answer(
             provider=os.getenv("AI_PROVIDER", "template"),
-            message=message,
+            message=normalized_message,
             intent=intent,
             data=data,
             citations=citations,
@@ -153,6 +219,78 @@ class CopilotOrchestrator:
             "data": data,
             "citations": citations,
             "recommendations": recommendations,
+            "warnings": warnings,
+            "upgrade_required": False,
+            "required_plan": None,
+        }
+
+    def _normalize_message(self, message: str) -> str:
+        return " ".join((message or "").strip().split())
+
+    def _apply_guardrails(self, *, message: str, current_plan: PlanLevel) -> dict[str, Any] | None:
+        config = PLAN_GUARDRAILS[current_plan]
+        if not message:
+            return self._guardrail_response(
+                current_plan=current_plan,
+                reason="Enter a supply-chain, inventory, sales, returns, logistics, or compliance question.",
+            )
+
+        if len(message) > int(config["max_chars"]):
+            return self._guardrail_response(
+                current_plan=current_plan,
+                reason=f"{current_plan.value.title()} Copilot messages are limited to {config['max_chars']} characters. Keep the prompt focused.",
+            )
+
+        if message.count("\n") + 1 > int(config["max_lines"]):
+            return self._guardrail_response(
+                current_plan=current_plan,
+                reason=f"{current_plan.value.title()} Copilot accepts up to {config['max_lines']} lines per message.",
+            )
+
+        lowered = message.lower()
+        if any(token in lowered for token in OFF_TOPIC_TOKENS):
+            return self._guardrail_response(
+                current_plan=current_plan,
+                reason="This copilot is limited to IntelliFlow operational questions and does not handle general chat.",
+            )
+
+        has_business_signal = any(token in lowered for token in BUSINESS_TOKENS)
+        intent = classify_intent(message)
+        allowed_intents = config["allowed_intents"]
+        if intent not in allowed_intents:
+            return self._guardrail_response(
+                current_plan=current_plan,
+                reason="This plan can only use operational copilot workflows that match its enabled domains.",
+            )
+
+        if intent == "general" and not config["allow_general_fallback"] and not has_business_signal:
+            return self._guardrail_response(
+                current_plan=current_plan,
+                reason="Ask a direct IntelliFlow workflow question, such as low stock, sales, returns, logistics, or compliance.",
+            )
+
+        return None
+
+    def _guardrail_response(self, *, current_plan: PlanLevel, reason: str) -> dict[str, Any]:
+        warnings = [reason]
+        return {
+            "intent": "guardrail",
+            "tools_used": [],
+            "answer": reason,
+            "data": {
+                "guardrail_triggered": True,
+                "plan_level": "PREMIUM" if current_plan == PlanLevel.PRO else current_plan.value,
+                "message": reason,
+                "examples": [
+                    "What products are low on stock?",
+                    "What are my best-selling products this week?",
+                    "Which products are leaking profit due to returns?",
+                    "Any delayed shipments?",
+                    "What does Malaysian customs law say about import documentation?",
+                ],
+            },
+            "citations": [],
+            "recommendations": [],
             "warnings": warnings,
             "upgrade_required": False,
             "required_plan": None,

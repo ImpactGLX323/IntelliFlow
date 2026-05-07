@@ -1,6 +1,6 @@
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Response, status
 from sqlalchemy.orm import Session
 
 from app.auth import get_current_user
@@ -8,6 +8,7 @@ from app.core.plan import require_plan
 from app.database import get_db
 from app.models import User
 from app.schemas import PurchaseOrderCreate, PurchaseOrderRead, ReceivePurchaseOrderItemRequest
+from app.services.csv_service import export_purchase_orders_csv
 from app.services.purchasing_service import (
     cancel_purchase_order,
     create_purchase_order,
@@ -19,6 +20,19 @@ from app.services.purchasing_service import (
 from app.services.notification_service import create_notification
 
 router = APIRouter(dependencies=[Depends(require_plan("PRO"))])
+
+
+@router.get("/export/csv")
+async def get_purchase_orders_csv(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    csv_content = export_purchase_orders_csv(db, user=current_user)
+    return Response(
+        content=csv_content,
+        media_type="text/csv",
+        headers={"Content-Disposition": 'attachment; filename="intelliflow-purchase-orders.csv"'},
+    )
 
 
 @router.get("/", response_model=List[PurchaseOrderRead])

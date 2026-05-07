@@ -36,6 +36,10 @@ async function parseResponse(response) {
   return response.json();
 }
 
+async function parseTextResponse(response) {
+  return response.text();
+}
+
 async function normalizeError(response) {
   const data = await parseResponse(response);
   if (typeof data?.detail === 'string') {
@@ -107,6 +111,44 @@ export async function requestJson(session, path, options = {}, attempt = 0) {
   } catch (error) {
     if (attempt === 0 && isTransientError(error)) {
       return requestJson(activeSession, path, options, 1);
+    }
+    throw error instanceof Error ? error : new Error('Unable to reach IntelliFlow service.');
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+export async function requestText(session, path, options = {}, attempt = 0) {
+  const { params, body, headers, timeoutMs, ...rest } = options;
+  const activeSession = resolveSession(session);
+  const url = buildUrl(activeSession.apiUrl, path, params);
+  const mergedHeaders = {
+    Accept: 'text/csv,text/plain,*/*',
+    'Content-Type': 'application/json',
+    ...(headers || {}),
+  };
+
+  if (activeSession?.token) {
+    mergedHeaders.Authorization = `Bearer ${activeSession.token}`;
+  }
+
+  const { controller, timer } = withTimeout(timeoutMs);
+  try {
+    const response = await fetch(url, {
+      ...rest,
+      headers: mergedHeaders,
+      signal: controller.signal,
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+
+    if (!response.ok) {
+      throw await normalizeError(response);
+    }
+
+    return await parseTextResponse(response);
+  } catch (error) {
+    if (attempt === 0 && isTransientError(error)) {
+      return requestText(activeSession, path, options, 1);
     }
     throw error instanceof Error ? error : new Error('Unable to reach IntelliFlow service.');
   } finally {

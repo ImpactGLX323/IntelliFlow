@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
+import QuickProductCreateForm from '@/components/ui/QuickProductCreateForm'
 import RecommendationCard from '@/components/ui/RecommendationCard'
 import { analyticsAPI, copilotAPI, inventoryAPI, productsAPI, purchasingAPI } from '@/lib/api'
 import type { InventoryRisk } from '@/types/analytics'
@@ -40,6 +41,16 @@ const warehouseInitialForm = {
   is_active: true,
 }
 
+function downloadCsvFile(blob: BlobPart, filename: string) {
+  const file = new Blob([blob], { type: 'text/csv;charset=utf-8;' })
+  const url = URL.createObjectURL(file)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = filename
+  link.click()
+  URL.revokeObjectURL(url)
+}
+
 export default function InventoryPage() {
   const [risks, setRisks] = useState<InventoryRisk[]>([])
   const [recommendations, setRecommendations] = useState<AgentRecommendation[]>([])
@@ -55,6 +66,7 @@ export default function InventoryPage() {
   const [adjustmentForm, setAdjustmentForm] = useState(adjustmentInitialForm)
   const [supplierForm, setSupplierForm] = useState(supplierInitialForm)
   const [warehouseForm, setWarehouseForm] = useState(warehouseInitialForm)
+  const [csvInputs, setCsvInputs] = useState({ products: '', suppliers: '', warehouses: '' })
 
   useEffect(() => {
     const load = async () => {
@@ -286,6 +298,73 @@ export default function InventoryPage() {
     }
   }
 
+  const handleCsvFile = (entity: 'products' | 'suppliers' | 'warehouses', file?: File | null) => {
+    if (!file) return
+    const reader = new FileReader()
+    reader.onload = () => {
+      setCsvInputs((current) => ({ ...current, [entity]: String(reader.result || '') }))
+    }
+    reader.readAsText(file)
+  }
+
+  const handleImportCsv = async (entity: 'products' | 'suppliers' | 'warehouses') => {
+    const csvText = csvInputs[entity].trim()
+    if (!csvText) {
+      setError(`Paste ${entity} CSV content before importing.`)
+      return
+    }
+    setSheetSaving(`${entity}-csv`)
+    setError('')
+    try {
+      if (entity === 'products') {
+        await productsAPI.importCsv(csvText)
+      } else if (entity === 'suppliers') {
+        await purchasingAPI.importSuppliersCsv(csvText)
+      } else {
+        await inventoryAPI.importWarehousesCsv(csvText)
+      }
+      setCsvInputs((current) => ({ ...current, [entity]: '' }))
+      await reloadWorkspace()
+    } catch (err: any) {
+      setError(err.response?.data?.detail || `Failed to import ${entity} CSV.`)
+    } finally {
+      setSheetSaving(null)
+    }
+  }
+
+  const handleExportProductsCsv = async () => {
+    try {
+      const response = await productsAPI.exportCsv()
+      downloadCsvFile(response.data, 'intelliflow-products.csv')
+    } catch (err: any) {
+      setError(err.response?.data?.detail || 'Failed to export products CSV.')
+    }
+  }
+
+  const handleExportSuppliersCsv = async () => {
+    try {
+      const response = await purchasingAPI.exportSuppliersCsv()
+      downloadCsvFile(response.data, 'intelliflow-suppliers.csv')
+    } catch (err: any) {
+      setError(err.response?.data?.detail || 'Failed to export suppliers CSV.')
+    }
+  }
+
+  const handleExportWarehousesCsv = async () => {
+    try {
+      const response = await inventoryAPI.exportWarehousesCsv()
+      downloadCsvFile(response.data, 'intelliflow-warehouses.csv')
+    } catch (err: any) {
+      setError(err.response?.data?.detail || 'Failed to export warehouses CSV.')
+    }
+  }
+
+  const handleProductCreated = async (product: Product) => {
+    await reloadWorkspace()
+    setReceiveForm((current) => ({ ...current, product_id: String(product.id) }))
+    setAdjustmentForm((current) => ({ ...current, product_id: String(product.id) }))
+  }
+
   return (
     <div className="space-y-6">
       <section className="grid gap-6 xl:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)]">
@@ -318,6 +397,9 @@ export default function InventoryPage() {
         <div className="app-surface min-w-0 rounded-[1.7rem] p-6">
           <p className="font-montserrat text-xs font-semibold uppercase tracking-[0.22em] text-white/40">Receive stock</p>
           <h2 className="font-montserrat mt-3 text-2xl font-semibold text-white">Add products into inventory</h2>
+          <div className="mt-5">
+            <QuickProductCreateForm onCreated={handleProductCreated} />
+          </div>
           <form onSubmit={handleReceive} className="mt-5 grid gap-4">
             <select
               required
@@ -428,6 +510,64 @@ export default function InventoryPage() {
             </button>
           </form>
         </div>
+      </section>
+
+      <section className="grid min-w-0 gap-6 xl:grid-cols-3">
+        {[
+          {
+            key: 'products' as const,
+            title: 'Products CSV',
+            subtitle: 'Round-trip SKU rows, supplier assignments, and opening stock safely through the ledger.',
+            exportAction: handleExportProductsCsv,
+          },
+          {
+            key: 'suppliers' as const,
+            title: 'Suppliers CSV',
+            subtitle: 'Manage supplier records and lead-time fields in bulk.',
+            exportAction: handleExportSuppliersCsv,
+          },
+          {
+            key: 'warehouses' as const,
+            title: 'Warehouses CSV',
+            subtitle: 'Bulk maintain warehouse names, codes, addresses, and active status.',
+            exportAction: handleExportWarehousesCsv,
+          },
+        ].map((item) => (
+          <div key={item.key} className="app-surface min-w-0 rounded-[1.7rem] p-6">
+            <p className="font-montserrat text-xs font-semibold uppercase tracking-[0.22em] text-white/40">{item.title}</p>
+            <p className="font-lexend mt-3 text-sm leading-7 text-white/68">{item.subtitle}</p>
+            <input
+              type="file"
+              accept=".csv,text/csv"
+              className="mt-4 block w-full text-xs text-white/62 file:mr-4 file:rounded-full file:border-0 file:bg-white/10 file:px-4 file:py-2 file:text-xs file:font-semibold file:text-white"
+              onChange={(event) => handleCsvFile(item.key, event.target.files?.[0])}
+            />
+            <textarea
+              rows={10}
+              className="font-lexend mt-4 w-full rounded-2xl border border-white/12 bg-white/[0.04] px-4 py-3 text-sm text-white outline-none focus:border-white/24"
+              placeholder={`Paste ${item.key} CSV here`}
+              value={csvInputs[item.key]}
+              onChange={(event) => setCsvInputs((current) => ({ ...current, [item.key]: event.target.value }))}
+            />
+            <div className="mt-4 flex flex-wrap gap-3">
+              <button
+                type="button"
+                onClick={item.exportAction}
+                className="rounded-full border border-white/12 bg-white/[0.04] px-4 py-2 text-xs font-semibold uppercase tracking-[0.14em] text-white/82"
+              >
+                Export CSV
+              </button>
+              <button
+                type="button"
+                onClick={() => handleImportCsv(item.key)}
+                disabled={sheetSaving === `${item.key}-csv`}
+                className="app-button-primary px-4 py-2 text-xs font-semibold uppercase tracking-[0.14em]"
+              >
+                {sheetSaving === `${item.key}-csv` ? 'Importing...' : 'Import CSV'}
+              </button>
+            </div>
+          </div>
+        ))}
       </section>
 
       <section className="overflow-hidden rounded-[1.6rem] border border-white/12 bg-white/[0.04] backdrop-blur-sm">

@@ -41,6 +41,12 @@ export interface AICapabilities {
     logistics_control_tower: boolean
     advanced_recommendations: boolean
   }
+  guardrails: {
+    max_chars: number
+    max_lines: number
+    allow_general_fallback: boolean
+    message: string
+  }
 }
 
 export interface CopilotQueryResponse {

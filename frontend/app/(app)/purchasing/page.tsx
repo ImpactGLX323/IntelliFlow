@@ -1,8 +1,8 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import axios from 'axios'
 import PlanAccessNotice from '@/components/ui/PlanAccessNotice'
+import QuickProductCreateForm from '@/components/ui/QuickProductCreateForm'
 import { productsAPI, purchasingAPI } from '@/lib/api'
 import { normalizePlanLabel } from '@/lib/navigation'
 import { useAuth } from '@/contexts/AuthContext'
@@ -17,6 +17,16 @@ const initialForm = {
   unit_cost: '0',
   expected_arrival_date: '',
   notes: '',
+}
+
+function downloadCsvFile(blob: BlobPart, filename: string) {
+  const file = new Blob([blob], { type: 'text/csv;charset=utf-8;' })
+  const url = URL.createObjectURL(file)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = filename
+  link.click()
+  URL.revokeObjectURL(url)
 }
 
 export default function PurchasingPage() {
@@ -101,6 +111,15 @@ export default function PurchasingPage() {
     }
   }
 
+  const exportOrdersCsv = async () => {
+    try {
+      const response = await purchasingAPI.exportOrdersCsv()
+      downloadCsvFile(response.data, 'intelliflow-purchase-orders.csv')
+    } catch (err: any) {
+      setError(err.response?.data?.detail || 'Failed to export purchase orders CSV.')
+    }
+  }
+
   if (loading) {
     return <div className="flex min-h-[60vh] items-center justify-center"><div className="h-12 w-12 animate-spin rounded-full border-2 border-white/14 border-t-white" /></div>
   }
@@ -113,6 +132,15 @@ export default function PurchasingPage() {
         body="Persisted backend plan enforcement now protects purchase orders, receiving, reorder workflows, and inbound execution from Free-tier access."
       />
     )
+  }
+
+  const handleProductCreated = async (product: Product) => {
+    await load()
+    setForm((current) => ({
+      ...current,
+      product_id: String(product.id),
+      unit_cost: current.unit_cost === '0' ? String(product.cost ?? 0) : current.unit_cost,
+    }))
   }
 
   return (
@@ -146,6 +174,16 @@ export default function PurchasingPage() {
 
       <section className="rounded-[1.6rem] border border-white/12 bg-white/[0.04] p-6 backdrop-blur-sm">
         <h2 className="font-montserrat text-2xl font-semibold text-white">Create purchase order</h2>
+        <button
+          type="button"
+          onClick={exportOrdersCsv}
+          className="mt-4 rounded-full border border-white/12 bg-white/[0.04] px-4 py-2 text-xs font-semibold uppercase tracking-[0.14em] text-white/82"
+        >
+          Export purchase orders CSV
+        </button>
+        <div className="mt-5">
+          <QuickProductCreateForm onCreated={handleProductCreated} />
+        </div>
         <form onSubmit={submit} className="mt-6 grid gap-5 md:grid-cols-2">
           <div>
             <label className="font-montserrat text-xs font-semibold uppercase tracking-[0.12em] text-white/46">Supplier</label>

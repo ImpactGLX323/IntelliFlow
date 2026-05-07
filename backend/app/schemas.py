@@ -56,6 +56,9 @@ class ProductResponse(BaseModel):
     price: float
     cost: float
     current_stock: int
+    on_hand: int = 0
+    reserved: int = 0
+    available_stock: int = 0
     min_stock_threshold: int
     supplier: Optional[str]
     created_at: datetime
@@ -164,6 +167,13 @@ class AICopilotRequest(BaseModel):
             raise ValueError("user_plan must be FREE, PREMIUM, PRO, or BOOST")
         return normalized
 
+    @field_validator("user_id", mode="before")
+    @classmethod
+    def validate_user_id(cls, value: object) -> Optional[str]:
+        if value is None or value == "":
+            return None
+        return str(value)
+
 
 class AICopilotResponse(BaseModel):
     intent: str
@@ -208,6 +218,7 @@ class AICapabilitiesResponse(BaseModel):
     plan_level: str
     allowed_domains: List[str]
     features: dict
+    guardrails: dict
 
 
 class OrganizationRead(BaseModel):
@@ -257,6 +268,17 @@ class UserDeviceCreate(BaseModel):
     platform: str
     push_token: str
     app_version: Optional[str] = None
+
+
+class CsvImportRequest(BaseModel):
+    csv_text: str
+
+
+class CsvImportResult(BaseModel):
+    entity: str
+    created: int
+    updated: int
+    warnings: List[str] = []
 
 
 class UserDeviceRead(BaseModel):

@@ -1,12 +1,13 @@
 from typing import List
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from sqlalchemy.orm import Session
 
 from app.auth import get_current_user
 from app.database import get_db
 from app.models import Supplier, User
-from app.schemas import SupplierCreate, SupplierRead, SupplierUpdate
+from app.schemas import CsvImportRequest, CsvImportResult, SupplierCreate, SupplierRead, SupplierUpdate
+from app.services.csv_service import export_suppliers_csv, import_suppliers_csv
 from app.services.tenant_service import get_owned_supplier
 
 router = APIRouter()
@@ -18,6 +19,28 @@ async def list_suppliers(
     current_user: User = Depends(get_current_user),
 ):
     return db.query(Supplier).filter(Supplier.owner_id == current_user.id).order_by(Supplier.name.asc()).all()
+
+
+@router.get("/export/csv")
+async def get_suppliers_csv(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    csv_content = export_suppliers_csv(db, user=current_user)
+    return Response(
+        content=csv_content,
+        media_type="text/csv",
+        headers={"Content-Disposition": 'attachment; filename="intelliflow-suppliers.csv"'},
+    )
+
+
+@router.post("/import/csv", response_model=CsvImportResult)
+async def post_suppliers_csv_import(
+    payload: CsvImportRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    return import_suppliers_csv(db, user=current_user, csv_text=payload.csv_text)
 
 
 @router.post("/", response_model=SupplierRead, status_code=status.HTTP_201_CREATED)

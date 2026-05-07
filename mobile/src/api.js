@@ -8,6 +8,7 @@ import {
   healthCheck,
   readyCheck,
   requestJson,
+  requestText,
 } from './services/apiClient';
 import { integrationsApi } from './services/integrationsApi';
 
@@ -21,7 +22,11 @@ export const api = {
   getInventoryRisks: (session) => requestJson(session, '/api/analytics/inventory-risks'),
   getProducts: (session) => requestJson(session, '/api/products/'),
   createProduct: (session, payload) => requestJson(session, '/api/products/', { method: 'POST', body: payload }),
+  exportProductsCsv: (session) => requestText(session, '/api/products/export/csv'),
+  importProductsCsv: (session, csvText) => requestJson(session, '/api/products/import/csv', { method: 'POST', body: { csv_text: csvText } }),
   getWarehouses: (session) => requestJson(session, '/api/warehouses'),
+  exportWarehousesCsv: (session) => requestText(session, '/api/warehouses/export/csv'),
+  importWarehousesCsv: (session, csvText) => requestJson(session, '/api/warehouses/import/csv', { method: 'POST', body: { csv_text: csvText } }),
   createWarehouse: (session, payload) => requestJson(session, '/api/warehouses', { method: 'POST', body: payload }),
   getStockPosition: (session, productId, warehouseId) =>
     requestJson(session, `/api/inventory/stock/${productId}`, { params: { warehouse_id: warehouseId } }),
@@ -40,15 +45,19 @@ export const api = {
   fulfillSalesOrderItem: (session, orderId, itemId, quantity) =>
     requestJson(session, `/api/sales-orders/${orderId}/items/${itemId}/fulfill`, { method: 'POST', body: { quantity } }),
   getSales: (session) => requestJson(session, '/api/sales/'),
+  exportSalesCsv: (session) => requestText(session, '/api/sales/export/csv'),
   createSale: (session, payload) => requestJson(session, '/api/sales/', { method: 'POST', body: payload }),
   getEInvoiceSummary: (session) => requestJson(session, '/api/einvoicing/summary'),
   getEInvoiceDocuments: (session) => requestJson(session, '/api/einvoicing/documents'),
   createEInvoiceFromSale: (session, saleId, payload) =>
     requestJson(session, `/api/einvoicing/from-sale/${saleId}`, { method: 'POST', body: payload }),
   getSuppliers: (session) => requestJson(session, '/api/suppliers/'),
+  exportSuppliersCsv: (session) => requestText(session, '/api/suppliers/export/csv'),
+  importSuppliersCsv: (session, csvText) => requestJson(session, '/api/suppliers/import/csv', { method: 'POST', body: { csv_text: csvText } }),
   createSupplier: (session, payload) => requestJson(session, '/api/suppliers/', { method: 'POST', body: payload }),
   getPurchaseOrders: (session, statusFilter) =>
     requestJson(session, '/api/purchase-orders/', { params: { status_filter: statusFilter } }),
+  exportPurchaseOrdersCsv: (session) => requestText(session, '/api/purchase-orders/export/csv'),
   createPurchaseOrder: (session, payload) =>
     requestJson(session, '/api/purchase-orders/', { method: 'POST', body: payload }),
   markPurchaseOrderOrdered: (session, purchaseOrderId) =>

@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import PlanAccessNotice from '@/components/ui/PlanAccessNotice'
+import QuickProductCreateForm from '@/components/ui/QuickProductCreateForm'
 import { productsAPI, transfersAPI } from '@/lib/api'
 import { normalizePlanLabel } from '@/lib/navigation'
 import { useAuth } from '@/contexts/AuthContext'
@@ -110,6 +111,11 @@ export default function TransfersPage() {
     )
   }
 
+  const handleProductCreated = async (product: Product) => {
+    await load()
+    setForm((current) => ({ ...current, product_id: String(product.id) }))
+  }
+
   return (
     <div className="space-y-6">
       <section className="grid gap-6 xl:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)]">
@@ -141,6 +147,9 @@ export default function TransfersPage() {
 
       <section className="rounded-[1.6rem] border border-white/12 bg-white/[0.04] p-6 backdrop-blur-sm">
         <h2 className="font-montserrat text-2xl font-semibold text-white">Create transfer</h2>
+        <div className="mt-5">
+          <QuickProductCreateForm onCreated={handleProductCreated} />
+        </div>
         <form onSubmit={submit} className="mt-6 grid gap-5 md:grid-cols-2">
           <div>
             <label className="font-montserrat text-xs font-semibold uppercase tracking-[0.12em] text-white/46">Product</label>

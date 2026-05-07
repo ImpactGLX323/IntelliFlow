@@ -20,11 +20,35 @@ function formatScalar(value: string | number | boolean) {
   return value
 }
 
+function tryParseJsonString(value: string): unknown {
+  const trimmed = value.trim()
+  if (!trimmed) {
+    return value
+  }
+  if (
+    (trimmed.startsWith('{') && trimmed.endsWith('}')) ||
+    (trimmed.startsWith('[') && trimmed.endsWith(']'))
+  ) {
+    try {
+      return JSON.parse(trimmed)
+    } catch {
+      return value
+    }
+  }
+  return value
+}
+
 function isPrimitive(value: unknown): value is string | number | boolean {
   return ['string', 'number', 'boolean'].includes(typeof value)
 }
 
 function renderPrimitive(value: string | number | boolean) {
+  if (typeof value === 'string') {
+    const parsed = tryParseJsonString(value)
+    if (parsed !== value) {
+      return <>{renderValue(parsed)}</>
+    }
+  }
   return <span className="break-all text-sm leading-7 text-white/84">{formatScalar(value)}</span>
 }
 
@@ -74,9 +98,7 @@ function renderObject(value: Record<string, unknown>, depth: number): ReactNode 
             {formatLabel(key)}
           </p>
           <div className="mt-2 min-w-0">
-            {depth >= 2 && typeof nestedValue === 'object' && nestedValue !== null
-              ? <span className="break-all text-sm leading-7 text-white/72">{JSON.stringify(nestedValue)}</span>
-              : renderValue(nestedValue, depth + 1)}
+            {renderValue(nestedValue, depth + 1)}
           </div>
         </div>
       ))}

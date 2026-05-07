@@ -85,7 +85,7 @@ export default function ProductsPage() {
     )
   }
 
-  const lowStockCount = products.filter((product) => product.current_stock <= product.min_stock_threshold).length
+  const lowStockCount = products.filter((product) => product.available_stock <= product.min_stock_threshold).length
 
   return (
     <div className="space-y-6 overflow-x-hidden">
@@ -179,7 +179,9 @@ export default function ProductsPage() {
                 <th className="px-6 py-4 font-montserrat text-[11px] uppercase tracking-[0.18em]">Category</th>
                 <th className="px-6 py-4 font-montserrat text-[11px] uppercase tracking-[0.18em]">Supplier</th>
                 <th className="px-6 py-4 font-montserrat text-[11px] uppercase tracking-[0.18em]">Price</th>
-                <th className="px-6 py-4 font-montserrat text-[11px] uppercase tracking-[0.18em]">Stock</th>
+                <th className="px-6 py-4 font-montserrat text-[11px] uppercase tracking-[0.18em]">Available</th>
+                <th className="px-6 py-4 font-montserrat text-[11px] uppercase tracking-[0.18em]">On hand</th>
+                <th className="px-6 py-4 font-montserrat text-[11px] uppercase tracking-[0.18em]">Reserved</th>
                 <th className="px-6 py-4 font-montserrat text-[11px] uppercase tracking-[0.18em]">Status</th>
               </tr>
             </thead>
@@ -198,9 +200,11 @@ export default function ProductsPage() {
                   <td className="px-6 py-5 font-lexend text-white/64">{product.category || '-'}</td>
                   <td className="px-6 py-5 font-lexend text-white/64">{product.supplier || '-'}</td>
                   <td className="px-6 py-5 font-montserrat text-white">{formatCurrency(product.price)}</td>
-                  <td className="px-6 py-5 font-montserrat text-white">{product.current_stock}</td>
+                  <td className="px-6 py-5 font-montserrat text-white">{product.available_stock}</td>
+                  <td className="px-6 py-5 font-montserrat text-white/76">{product.on_hand}</td>
+                  <td className="px-6 py-5 font-montserrat text-white/76">{product.reserved}</td>
                   <td className="px-6 py-5">
-                    {product.current_stock <= product.min_stock_threshold ? (
+                    {product.available_stock <= product.min_stock_threshold ? (
                       <span className="font-montserrat inline-flex whitespace-nowrap rounded-full bg-red-500/12 px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-red-200">
                         Low stock
                       </span>

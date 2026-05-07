@@ -23,6 +23,7 @@ import { api, demoBootstrap, demoLogin, getPublicAppConfig, healthCheck } from '
 import { getLoginErrorMessage, getRegisterErrorMessage, getResetPasswordErrorMessage } from './authMessages';
 import IntelliFlowLogo from './components/brand/IntelliFlowLogo';
 import MobileHeader from './components/layout/MobileHeader';
+import LeafletFlowMap from './components/maps/LeafletFlowMap';
 import MobileNavigationTracker from './components/navigation/MobileNavigationTracker';
 import AppButton from './components/ui/AppButton';
 import AppCard from './components/ui/AppCard';
@@ -47,14 +48,13 @@ const SCREENS = [
   { key: 'transfers', label: 'Transfers' },
   { key: 'returns', label: 'Returns' },
   { key: 'logistics', label: 'Logistics' },
-  { key: 'compliance', label: 'Compliance' },
+  { key: 'compliance', label: 'MCP + RAG' },
   { key: 'einvoicing', label: 'E-Invoicing' },
   { key: 'copilot', label: 'AI Copilot' },
   { key: 'plans', label: 'Plans' },
   { key: 'account', label: 'Profile' },
   { key: 'recommendations', label: 'Recommendations' },
-  { key: 'alerts', label: 'Alerts' },
-  { key: 'manufacturing', label: 'Manufacturing' },
+  { key: 'alerts', label: 'Notifications' },
 ];
 
 const PRIMARY_TABS = [
@@ -232,6 +232,7 @@ function AppShowcaseCard({ title, body, accent = 'orange', children }) {
 }
 
 function ProductTile({ product }) {
+  const availableStock = product.available_stock ?? product.current_stock;
   return (
     <View style={styles.productTile}>
       <Text style={styles.productTileCategory}>{product.category || 'General'}</Text>
@@ -245,7 +246,7 @@ function ProductTile({ product }) {
         <View
           style={[
             styles.productTileStockDot,
-            product.current_stock <= product.min_stock_threshold && styles.productTileStockDotWarn,
+            availableStock <= product.min_stock_threshold && styles.productTileStockDotWarn,
           ]}
         />
       </View>
@@ -344,6 +345,15 @@ function CapabilityMatrix({ currentPlan, capabilities }) {
           ))}
         </View>
       </View>
+      {capabilities?.guardrails ? (
+        <View style={styles.guardrailCard}>
+          <Text style={styles.guardrailTitle}>Copilot guardrails</Text>
+          <Text style={styles.guardrailBody}>{capabilities.guardrails.message}</Text>
+          <Text style={styles.guardrailMeta}>
+            Limit: {capabilities.guardrails.max_chars} characters, {capabilities.guardrails.max_lines} lines.
+          </Text>
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -562,6 +572,134 @@ function JsonPreview({ data }) {
     <ScrollView horizontal style={styles.jsonWrap}>
       <Text style={styles.jsonText}>{JSON.stringify(data, null, 2)}</Text>
     </ScrollView>
+  );
+}
+
+function formatStructuredValue(value) {
+  if (value === null || value === undefined || value === '') {
+    return 'N/A';
+  }
+  if (typeof value === 'number') {
+    return Number.isInteger(value) ? String(value) : value.toFixed(2);
+  }
+  if (typeof value === 'boolean') {
+    return value ? 'Yes' : 'No';
+  }
+  return String(value);
+}
+
+function toStructuredEntries(payload) {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+    return [];
+  }
+  return Object.entries(payload).filter(([, value]) => value !== undefined);
+}
+
+function StructuredResponsePanel({ response, emptyTitle, emptyBody }) {
+  if (!response) {
+    return <EmptyState title={emptyTitle} body={emptyBody} />;
+  }
+
+  const data = response.data && typeof response.data === 'object' ? response.data : {};
+  const items = Array.isArray(data.items) ? data.items : [];
+  const topEntries = toStructuredEntries(data).filter(([key]) => key !== 'items');
+
+  return (
+    <View style={styles.structuredResponseWrap}>
+      {response.answer ? (
+        <View style={styles.structuredAnswerCard}>
+          <Text style={styles.structuredAnswerTitle}>Answer</Text>
+          <Text style={styles.answerText}>{response.answer}</Text>
+        </View>
+      ) : null}
+
+      {Array.isArray(response.tools_used) && response.tools_used.length ? (
+        <View style={styles.structuredSection}>
+          <Text style={styles.structuredSectionTitle}>Tools used</Text>
+          <View style={styles.chipRow}>
+            {response.tools_used.map((tool) => (
+              <Chip key={tool} label={tool} />
+            ))}
+          </View>
+        </View>
+      ) : null}
+
+      {topEntries.length ? (
+        <View style={styles.structuredSection}>
+          <Text style={styles.structuredSectionTitle}>Details</Text>
+          {topEntries.map(([key, value]) => (
+            <View key={key} style={styles.structuredRow}>
+              <Text style={styles.structuredKey}>{key.replaceAll('_', ' ')}</Text>
+              <Text style={styles.structuredValue}>{formatStructuredValue(value)}</Text>
+            </View>
+          ))}
+        </View>
+      ) : null}
+
+      {items.length ? (
+        <View style={styles.structuredSection}>
+          <Text style={styles.structuredSectionTitle}>Items</Text>
+          {items.map((item, index) => {
+            const entries = toStructuredEntries(item);
+            return (
+              <View key={`${item.product_id || item.rank || index}`} style={styles.structuredItemCard}>
+                {entries.map(([key, value]) => (
+                  <View key={key} style={styles.structuredRow}>
+                    <Text style={styles.structuredKey}>{key.replaceAll('_', ' ')}</Text>
+                    <Text style={styles.structuredValue}>{formatStructuredValue(value)}</Text>
+                  </View>
+                ))}
+              </View>
+            );
+          })}
+        </View>
+      ) : null}
+
+      {Array.isArray(response.recommendations) && response.recommendations.length ? (
+        <View style={styles.structuredSection}>
+          <Text style={styles.structuredSectionTitle}>Recommendations</Text>
+          <View style={styles.listBlock}>
+            {response.recommendations.map((item, index) => (
+              <Text key={`${item}-${index}`} style={styles.listItem}>• {item}</Text>
+            ))}
+          </View>
+        </View>
+      ) : null}
+
+      {Array.isArray(response.warnings) && response.warnings.length ? (
+        <View style={styles.errorBanner}>
+          {response.warnings.map((item, index) => (
+            <Text key={`${item}-${index}`} style={styles.errorText}>{item}</Text>
+          ))}
+        </View>
+      ) : null}
+
+      {!response.answer && !topEntries.length && !items.length ? (
+        <JsonPreview data={response} />
+      ) : null}
+    </View>
+  );
+}
+
+function CsvWorkspacePanel({
+  title,
+  subtitle,
+  csvText,
+  onChangeText,
+  onExport,
+  onImport,
+  exportTitle = 'Load export CSV',
+  importTitle = 'Import CSV',
+  loading = false,
+}) {
+  return (
+    <Panel title={title} subtitle={subtitle}>
+      <Field label="CSV text" value={csvText} onChangeText={onChangeText} multiline />
+      <View style={styles.inlineActions}>
+        <ActionButton title={exportTitle} tone="secondary" onPress={onExport} disabled={loading} />
+        <ActionButton title={loading ? 'Working...' : importTitle} onPress={onImport} disabled={loading} />
+      </View>
+    </Panel>
   );
 }
 
@@ -870,19 +1008,26 @@ function DashboardScreen({ session, currentUser, sessionPlan }) {
         ) : null}
       </AppShowcaseCard>
 
-      <Panel title="Order history" subtitle="Top-selling movement in a compact operational layout." right={<ActionButton title="Refresh" tone="secondary" onPress={load} />}>
+      <Panel title="Order history" subtitle="Top-selling movement in a compact operational layout.">
+        <View style={styles.inlineActions}>
+          <ActionButton title="Refresh" tone="secondary" onPress={load} />
+        </View>
         {dashboard?.top_sellers?.length ? (
           dashboard.top_sellers.slice(0, 3).map((item) => (
             <View key={item.product_id} style={styles.orderHistoryCard}>
               <View style={styles.orderHistoryVisual} />
-              <View style={styles.rowCardMain}>
-                <Text style={styles.rowTitle}>{item.product_name}</Text>
-                <Text style={styles.rowBody}>
-                  {item.total_quantity} units • {money(item.total_revenue)}
-                </Text>
-                <Text style={styles.rowBodyMuted}>{item.total_sales} completed sales</Text>
+              <View style={styles.orderHistoryCopy}>
+                <View style={styles.rowCardMain}>
+                  <Text style={styles.rowTitle}>{item.product_name}</Text>
+                  <Text style={styles.rowBody}>
+                    {item.total_quantity} units • {money(item.total_revenue)}
+                  </Text>
+                  <Text style={styles.rowBodyMuted}>{item.total_sales} completed sales</Text>
+                </View>
+                <View style={styles.orderHistoryBadge}>
+                  <Chip label="Delivered" active />
+                </View>
               </View>
-              <Chip label="Delivered" active />
             </View>
           ))
         ) : (
@@ -1033,7 +1178,7 @@ function ProductsScreen({ session }) {
     return <LoadingBlock />;
   }
 
-  const lowStockCount = products.filter((item) => item.current_stock <= item.min_stock_threshold).length;
+  const lowStockCount = products.filter((item) => (item.available_stock ?? item.current_stock) <= item.min_stock_threshold).length;
 
   return (
     <View style={styles.screenStack}>
@@ -1100,8 +1245,12 @@ function ProductsScreen({ session }) {
                 <Text style={styles.rowBodyMuted}>{product.description || product.supplier || 'No extra metadata.'}</Text>
               </View>
               <Chip
-                label={product.current_stock <= product.min_stock_threshold ? 'Low stock' : `${product.current_stock} on hand`}
-                tone={product.current_stock <= product.min_stock_threshold ? 'warning' : 'success'}
+                label={
+                  (product.available_stock ?? product.current_stock) <= product.min_stock_threshold
+                    ? 'Low stock'
+                    : `${product.available_stock ?? product.current_stock} available`
+                }
+                tone={(product.available_stock ?? product.current_stock) <= product.min_stock_threshold ? 'warning' : 'success'}
               />
             </View>
           ))
@@ -1133,6 +1282,8 @@ function InventoryScreen({ session }) {
   const [warehouseForm, setWarehouseForm] = useState({ name: '', code: '', address: '' });
   const [receiveForm, setReceiveForm] = useState({ quantity: '', reference_id: '' });
   const [adjustForm, setAdjustForm] = useState({ quantity: '', adjustment_type: 'NEGATIVE', reason: '' });
+  const [csvDrafts, setCsvDrafts] = useState({ products: '', suppliers: '', warehouses: '' });
+  const [csvBusy, setCsvBusy] = useState('');
 
   const load = async () => {
     setLoading(true);
@@ -1246,6 +1397,48 @@ function InventoryScreen({ session }) {
     }
   };
 
+  const exportCsv = async (entity) => {
+    setCsvBusy(`export-${entity}`);
+    try {
+      const loader =
+        entity === 'products'
+          ? api.exportProductsCsv
+          : entity === 'suppliers'
+            ? api.exportSuppliersCsv
+            : api.exportWarehousesCsv;
+      const text = await loader(session);
+      setCsvDrafts((current) => ({ ...current, [entity]: text }));
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setCsvBusy('');
+    }
+  };
+
+  const importCsv = async (entity) => {
+    const csvText = (csvDrafts[entity] || '').trim();
+    if (!csvText) {
+      setError(`Paste ${entity} CSV content before importing.`);
+      return;
+    }
+    setCsvBusy(`import-${entity}`);
+    try {
+      const importer =
+        entity === 'products'
+          ? api.importProductsCsv
+          : entity === 'suppliers'
+            ? api.importSuppliersCsv
+            : api.importWarehousesCsv;
+      await importer(session, csvText);
+      setCsvDrafts((current) => ({ ...current, [entity]: '' }));
+      await load();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setCsvBusy('');
+    }
+  };
+
   if (loading) {
     return <LoadingBlock />;
   }
@@ -1319,6 +1512,36 @@ function InventoryScreen({ session }) {
         <Field label="Address" value={warehouseForm.address} onChangeText={(value) => setWarehouseForm((f) => ({ ...f, address: value }))} />
         <ActionButton title="Create warehouse" onPress={createWarehouse} />
       </Panel>
+
+      <CsvWorkspacePanel
+        title="Products CSV"
+        subtitle="Paste or load product rows with SKU, pricing, supplier, threshold, and opening stock."
+        csvText={csvDrafts.products}
+        onChangeText={(value) => setCsvDrafts((current) => ({ ...current, products: value }))}
+        onExport={() => exportCsv('products')}
+        onImport={() => importCsv('products')}
+        loading={csvBusy === 'export-products' || csvBusy === 'import-products'}
+      />
+
+      <CsvWorkspacePanel
+        title="Suppliers CSV"
+        subtitle="Round-trip supplier directory rows and lead-time data."
+        csvText={csvDrafts.suppliers}
+        onChangeText={(value) => setCsvDrafts((current) => ({ ...current, suppliers: value }))}
+        onExport={() => exportCsv('suppliers')}
+        onImport={() => importCsv('suppliers')}
+        loading={csvBusy === 'export-suppliers' || csvBusy === 'import-suppliers'}
+      />
+
+      <CsvWorkspacePanel
+        title="Warehouses CSV"
+        subtitle="Maintain warehouse names, codes, addresses, and active status in bulk."
+        csvText={csvDrafts.warehouses}
+        onChangeText={(value) => setCsvDrafts((current) => ({ ...current, warehouses: value }))}
+        onExport={() => exportCsv('warehouses')}
+        onImport={() => importCsv('warehouses')}
+        loading={csvBusy === 'export-warehouses' || csvBusy === 'import-warehouses'}
+      />
 
       <Panel title="Stock position" subtitle="Pick a product and warehouse to inspect on hand, reserved, and available.">
         <SelectorRow
@@ -1445,6 +1668,8 @@ function SalesScreen({ session, sessionPlan }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [customerForm, setCustomerForm] = useState({ name: '', email: '', phone: '', address: '' });
+  const [salesCsv, setSalesCsv] = useState('');
+  const [salesCsvBusy, setSalesCsvBusy] = useState(false);
   const [orderForm, setOrderForm] = useState({
     customer_id: '',
     product_id: '',
@@ -1559,6 +1784,17 @@ function SalesScreen({ session, sessionPlan }) {
     }
   };
 
+  const exportSalesCsv = async () => {
+    setSalesCsvBusy(true);
+    try {
+      setSalesCsv(await api.exportSalesCsv(session));
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSalesCsvBusy(false);
+    }
+  };
+
   if (loading) {
     return <LoadingBlock />;
   }
@@ -1578,7 +1814,11 @@ function SalesScreen({ session, sessionPlan }) {
         <PlanNotice requiredPlan="PREMIUM" body="AI-ranked best sellers and sales velocity shifts are locked on Free." />
       ) : (
         <Panel title="Sales insights">
-          {insight ? <JsonPreview data={insight} /> : <EmptyState title="No insight" body="Run a sales query after data loads." />}
+          <StructuredResponsePanel
+            response={insight}
+            emptyTitle="No insight"
+            emptyBody="Run a sales query after data loads."
+          />
         </Panel>
       )}
 
@@ -1645,6 +1885,18 @@ function SalesScreen({ session, sessionPlan }) {
           <EmptyState title="No sales orders" body="Create and confirm a sales order to test reservation-backed fulfillment." />
         )}
       </Panel>
+
+      <CsvWorkspacePanel
+        title="Sales CSV export"
+        subtitle="Load a CSV snapshot of recorded sales for downstream reporting or offline review."
+        csvText={salesCsv}
+        onChangeText={setSalesCsv}
+        onExport={exportSalesCsv}
+        onImport={() => setError('Sales import is not enabled. Use inventory CSV import for master data and record sales through workflow screens.')}
+        exportTitle="Load sales CSV"
+        importTitle="Import unavailable"
+        loading={salesCsvBusy}
+      />
     </View>
   );
 }
@@ -1657,6 +1909,9 @@ function PurchasingScreen({ session }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [supplierForm, setSupplierForm] = useState({ name: '', email: '', phone: '', address: '', lead_time_days: '' });
+  const [supplierCsv, setSupplierCsv] = useState('');
+  const [purchaseOrderCsv, setPurchaseOrderCsv] = useState('');
+  const [csvBusy, setCsvBusy] = useState('');
   const [poForm, setPoForm] = useState({
     supplier_id: '',
     product_id: '',
@@ -1705,6 +1960,45 @@ function PurchasingScreen({ session }) {
       load();
     } catch (err) {
       setError(err.message);
+    }
+  };
+
+  const exportSupplierCsv = async () => {
+    setCsvBusy('suppliers-export');
+    try {
+      setSupplierCsv(await api.exportSuppliersCsv(session));
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setCsvBusy('');
+    }
+  };
+
+  const importSupplierCsv = async () => {
+    if (!supplierCsv.trim()) {
+      setError('Paste supplier CSV content before importing.');
+      return;
+    }
+    setCsvBusy('suppliers-import');
+    try {
+      await api.importSuppliersCsv(session, supplierCsv);
+      setSupplierCsv('');
+      await load();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setCsvBusy('');
+    }
+  };
+
+  const exportPurchaseOrdersCsv = async () => {
+    setCsvBusy('orders-export');
+    try {
+      setPurchaseOrderCsv(await api.exportPurchaseOrdersCsv(session));
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setCsvBusy('');
     }
   };
 
@@ -1784,6 +2078,16 @@ function PurchasingScreen({ session }) {
         <ActionButton title="Create supplier" onPress={createSupplier} />
       </Panel>
 
+      <CsvWorkspacePanel
+        title="Suppliers CSV"
+        subtitle="Bulk maintain supplier rows and push them into the same backend directory used by purchasing."
+        csvText={supplierCsv}
+        onChangeText={setSupplierCsv}
+        onExport={exportSupplierCsv}
+        onImport={importSupplierCsv}
+        loading={csvBusy === 'suppliers-export' || csvBusy === 'suppliers-import'}
+      />
+
       <Panel title="Create purchase order">
         <SelectorRow
           label="Supplier"
@@ -1844,6 +2148,18 @@ function PurchasingScreen({ session }) {
           <EmptyState title="No purchase orders" body="Create a PO and receive it here." />
         )}
       </Panel>
+
+      <CsvWorkspacePanel
+        title="Purchase orders CSV export"
+        subtitle="Load a flattened CSV export of purchase orders and line items."
+        csvText={purchaseOrderCsv}
+        onChangeText={setPurchaseOrderCsv}
+        onExport={exportPurchaseOrdersCsv}
+        onImport={() => setError('Purchase-order import is not enabled. Create inbound orders through the purchasing workflow.')}
+        exportTitle="Load PO CSV"
+        importTitle="Import unavailable"
+        loading={csvBusy === 'orders-export'}
+      />
     </View>
   );
 }
@@ -2397,7 +2713,7 @@ function LogisticsScreen({ session, sessionPlan }) {
       >
         {publicFlow ? (
           <>
-            <ShipFlowMapPanel flow={publicFlow} />
+            <LeafletFlowMap flow={publicFlow} height={380} />
             <View style={styles.metricGrid}>
               <MetricCard label="MY ports" value={String(publicFlow.summary?.malaysian_ports_monitored || 0)} tone="accent" />
               <MetricCard label="Corridors" value={String(publicFlow.summary?.routes_monitored || 0)} />
@@ -2553,7 +2869,7 @@ function ComplianceScreen({ session, sessionPlan }) {
 
   return (
     <View style={styles.screenStack}>
-      <Panel title="Compliance RAG" subtitle="Malaysia-focused customs, transport, tax, and anti-corruption guidance with citations when available.">
+      <Panel title="MCP + RAG" subtitle="Malaysia-focused customs, transport, tax, and anti-corruption guidance with citations when available.">
         <Field label="Compliance question" value={query} onChangeText={setQuery} multiline />
         <View style={styles.chipRow}>
           {[
@@ -2780,6 +3096,15 @@ function CopilotScreen({ session, sessionPlan }) {
         <ErrorBanner message={error} />
         <InlineValue label="Requested plan" value={toDisplayPlan(sessionPlan)} />
         <InlineValue label="Backend plan" value={toDisplayPlan(capabilities?.plan_level) || 'Unknown'} />
+        {capabilities?.guardrails ? (
+          <View style={styles.guardrailCard}>
+            <Text style={styles.guardrailTitle}>Before you send</Text>
+            <Text style={styles.guardrailBody}>{capabilities.guardrails.message}</Text>
+            <Text style={styles.guardrailMeta}>
+              Keep it within {capabilities.guardrails.max_chars} characters and {capabilities.guardrails.max_lines} lines.
+            </Text>
+          </View>
+        ) : null}
         <Text style={styles.sectionLabel}>Prompt</Text>
         <Field label="Message" value={query} onChangeText={setQuery} multiline />
         <View style={styles.chipRow}>
@@ -2795,7 +3120,11 @@ function CopilotScreen({ session, sessionPlan }) {
       </Panel>
 
       <Panel title="Structured response">
-        {response ? <JsonPreview data={response} /> : <EmptyState title="No response yet" body="Submit a copilot prompt to see tools used, citations, and recommendations." />}
+        <StructuredResponsePanel
+          response={response}
+          emptyTitle="No response yet"
+          emptyBody="Submit a copilot prompt to see tools used, citations, and recommendations."
+        />
       </Panel>
 
       <Panel title="Recent recommendations">
@@ -4324,6 +4653,7 @@ function createStyles(theme) {
     justifyContent: 'space-between',
     alignItems: 'flex-start',
     gap: 12,
+    flexWrap: 'wrap',
   },
   panelHeaderCopy: {
     flex: 1,
@@ -4437,6 +4767,30 @@ function createStyles(theme) {
   capabilityMatrixMeta: {
     color: theme.textMuted,
     fontSize: responsiveFont(12),
+  },
+  guardrailCard: {
+    marginTop: 2,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: 'rgba(219, 148, 72, 0.2)',
+    backgroundColor: 'rgba(219, 148, 72, 0.08)',
+    padding: 14,
+    gap: 4,
+  },
+  guardrailTitle: {
+    color: theme.text,
+    fontSize: responsiveFont(14),
+    fontWeight: '700',
+  },
+  guardrailBody: {
+    color: theme.textMuted,
+    fontSize: responsiveFont(13),
+    lineHeight: responsiveLineHeight(13, 1.45),
+  },
+  guardrailMeta: {
+    color: theme.textSoft,
+    fontSize: responsiveFont(12),
+    lineHeight: responsiveLineHeight(12, 1.4),
   },
   capabilityTable: {
     borderRadius: 18,
@@ -4740,6 +5094,7 @@ function createStyles(theme) {
   rowCardMain: {
     gap: 4,
     minWidth: 0,
+    flex: 1,
   },
   rowTitle: {
     color: isDark ? '#fffaf5' : theme.text,
@@ -4766,7 +5121,7 @@ function createStyles(theme) {
     borderColor: theme.border,
     padding: 14,
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     gap: 14,
   },
   orderHistoryVisual: {
@@ -4776,6 +5131,14 @@ function createStyles(theme) {
     backgroundColor: 'rgba(255,255,255,0.06)',
     borderWidth: 1,
     borderColor: 'rgba(255,255,255,0.08)',
+  },
+  orderHistoryCopy: {
+    flex: 1,
+    minWidth: 0,
+    gap: 10,
+  },
+  orderHistoryBadge: {
+    alignSelf: 'flex-start',
   },
   inventoryHeadline: {
     color: isDark ? '#fffaf5' : theme.text,
@@ -5051,6 +5414,55 @@ function createStyles(theme) {
     fontSize: responsiveFont(12),
     lineHeight: responsiveLineHeight(12, 1.4),
     fontFamily: 'Courier',
+  },
+  structuredResponseWrap: {
+    gap: 12,
+  },
+  structuredAnswerCard: {
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: theme.border,
+    backgroundColor: theme.panelSoft,
+    padding: 14,
+    gap: 8,
+  },
+  structuredAnswerTitle: {
+    color: theme.textSoft,
+    fontSize: responsiveFont(11),
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+  },
+  structuredSection: {
+    gap: 10,
+  },
+  structuredSectionTitle: {
+    color: theme.text,
+    fontSize: responsiveFont(14),
+    fontWeight: '700',
+  },
+  structuredItemCard: {
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: theme.border,
+    backgroundColor: theme.panelSoft,
+    padding: 14,
+    gap: 8,
+  },
+  structuredRow: {
+    gap: 4,
+  },
+  structuredKey: {
+    color: theme.textSoft,
+    fontSize: responsiveFont(11),
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+  },
+  structuredValue: {
+    color: theme.text,
+    fontSize: responsiveFont(13),
+    lineHeight: responsiveLineHeight(13, 1.45),
   },
   answerText: {
     color: isDark ? '#fffaf5' : theme.text,

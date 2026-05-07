@@ -81,6 +81,14 @@ export default function CopilotPage() {
           <p className="font-lexend mt-5 max-w-3xl text-sm leading-8 text-[#c1ccd8] sm:text-base">
             The copilot routes inventory, sales, returns, logistics, and compliance questions through the internal MCP layer.
           </p>
+          {capabilities?.guardrails && (
+            <div className="mt-5 rounded-2xl border border-amber-300/18 bg-amber-500/8 px-4 py-3 text-sm text-[#f3dcc4]">
+              <p className="font-medium text-white/88">{capabilities.guardrails.message}</p>
+              <p className="mt-1 text-[#d7c0aa]">
+                Limit: {capabilities.guardrails.max_chars} characters, {capabilities.guardrails.max_lines} lines.
+              </p>
+            </div>
+          )}
           <textarea
             rows={5}
             className="font-lexend mt-6 w-full rounded-2xl border border-white/12 bg-white/[0.04] px-4 py-3 text-sm text-white outline-none placeholder:text-white/28"
