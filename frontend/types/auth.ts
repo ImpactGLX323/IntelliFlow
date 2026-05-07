@@ -1,7 +1,10 @@
 export interface User {
+  id?: number
   uid: string
   email: string | null
   full_name: string | null
+  organization_id?: number | null
+  subscription_plan?: 'FREE' | 'PREMIUM' | 'BOOST'
 }
 
 export interface AuthContextType {

@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, status
 from sqlalchemy.orm import Session
 
 from app.auth import get_current_user
+from app.core.plan import require_plan
 from app.database import get_db
 from app.models import CycleCount, User
 from app.schemas import (
@@ -34,7 +35,7 @@ from app.services.warehouse_workflow_service import (
     submit_cycle_count_item,
 )
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(require_plan("PRO"))])
 
 
 @router.get("/warehouse-locations", response_model=List[WarehouseLocationRead])
@@ -44,7 +45,7 @@ async def get_warehouse_locations(
     current_user: User = Depends(get_current_user),
 ):
     _ = current_user
-    return list_warehouse_locations(db, warehouse_id)
+    return list_warehouse_locations(db, owner_id=current_user.id, warehouse_id=warehouse_id)
 
 
 @router.post("/warehouse-locations", response_model=WarehouseLocationRead, status_code=status.HTTP_201_CREATED)
@@ -54,7 +55,7 @@ async def post_warehouse_location(
     current_user: User = Depends(get_current_user),
 ):
     _ = current_user
-    return create_warehouse_location(db, **payload.model_dump())
+    return create_warehouse_location(db, owner_id=current_user.id, **payload.model_dump())
 
 
 @router.post("/picking/sales-orders/{sales_order_id}/create", response_model=PickListRead)
@@ -64,7 +65,7 @@ async def create_pick_list(
     current_user: User = Depends(get_current_user),
 ):
     _ = current_user
-    return create_pick_list_for_sales_order(db, sales_order_id)
+    return create_pick_list_for_sales_order(db, sales_order_id, owner_id=current_user.id)
 
 
 @router.post("/picking/items/{pick_item_id}/pick", response_model=PickListRead)

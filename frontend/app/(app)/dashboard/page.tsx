@@ -1,10 +1,11 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { useAuth } from '@/contexts/AuthContext'
-import { analyticsAPI } from '@/lib/api'
+import { analyticsAPI, integrationsAPI } from '@/lib/api'
 import { formatCurrency } from '@/lib/utils/format'
 import type { DashboardStats } from '@/types/analytics'
+import type { BnmRatesResponse, DemandSignalItem, IntegrationProvider, IntegrationStatus, PortRiskItem, WarehouseDirectoryItem } from '@/types/integrations'
 import {
   LineChart,
   Line,
@@ -20,22 +21,68 @@ import {
 export default function DashboardPage() {
   const { user } = useAuth()
   const [stats, setStats] = useState<DashboardStats | null>(null)
+  const [providers, setProviders] = useState<IntegrationProvider[]>([])
+  const [integrationStatus, setIntegrationStatus] = useState<IntegrationStatus | null>(null)
+  const [warehousePreview, setWarehousePreview] = useState<WarehouseDirectoryItem[]>([])
+  const [portRisk, setPortRisk] = useState<PortRiskItem[]>([])
+  const [demandSignals, setDemandSignals] = useState<DemandSignalItem[]>([])
+  const [bnmRates, setBnmRates] = useState<BnmRatesResponse | null>(null)
+  const [marketplaceStatus, setMarketplaceStatus] = useState<string>('locked')
+  const [marketIntelligenceStatus, setMarketIntelligenceStatus] = useState<string>('locked')
   const [loading, setLoading] = useState(true)
 
-  useEffect(() => {
-    loadDashboard()
-  }, [])
-
-  const loadDashboard = async () => {
+  const loadDashboard = useCallback(async () => {
     try {
-      const response = await analyticsAPI.getDashboard()
-      setStats(response.data)
+      const [
+        dashboardResponse,
+        registryResponse,
+        statusResponse,
+        warehousesResponse,
+        portRiskResponse,
+        demandSignalResponse,
+        bnmRatesResponse,
+      ] = await Promise.all([
+        analyticsAPI.getDashboard(),
+        integrationsAPI.getRegistry(),
+        integrationsAPI.getStatus(),
+        integrationsAPI.getWarehouses({ source: 'seeded', limit: 4 }),
+        integrationsAPI.getPortRisk({ include_weather: true, include_marine: true }),
+        integrationsAPI.getDemandSignals({ source: 'preview' }),
+        integrationsAPI.getBnmRates({ currency: 'USD' }),
+      ])
+      setStats(dashboardResponse.data)
+      setProviders(registryResponse.data.providers ?? [])
+      setIntegrationStatus(statusResponse.data)
+      setWarehousePreview(warehousesResponse.data.items ?? [])
+      setPortRisk(portRiskResponse.data.ports ?? [])
+      setDemandSignals(demandSignalResponse.data.items ?? [])
+      setBnmRates(bnmRatesResponse.data)
+      if (user?.subscription_plan && user.subscription_plan !== 'FREE') {
+        try {
+          const marketplaceResponse = await integrationsAPI.getMarketplaceProviders()
+          setMarketplaceStatus(marketplaceResponse.data.providers?.some((item: any) => item.status !== 'not_configured') ? 'available' : 'not_configured')
+        } catch {
+          setMarketplaceStatus('not_configured')
+        }
+      }
+      if (user?.subscription_plan === 'BOOST') {
+        try {
+          const marketWideResponse = await integrationsAPI.getMarketWideBestSellers()
+          setMarketIntelligenceStatus(marketWideResponse.data.status || 'not_configured')
+        } catch {
+          setMarketIntelligenceStatus('not_configured')
+        }
+      }
     } catch (error) {
       console.error('Failed to load dashboard:', error)
     } finally {
       setLoading(false)
     }
-  }
+  }, [user?.subscription_plan])
+
+  useEffect(() => {
+    void loadDashboard()
+  }, [loadDashboard])
 
   if (loading) {
     return (
@@ -219,6 +266,103 @@ export default function DashboardPage() {
                 <p className="font-lexend mt-3 text-sm leading-7 text-white/58">{body}</p>
               </div>
             ))}
+          </div>
+        </div>
+      </section>
+
+      <section className="grid min-w-0 gap-6 xl:grid-cols-[minmax(0,1.08fr)_minmax(0,0.92fr)]">
+        <div className="app-surface min-w-0 rounded-[1.9rem] p-6">
+          <p className="font-montserrat text-xs uppercase tracking-[0.22em] text-white/38">Free API integrations</p>
+          <h2 className="font-montserrat mt-3 text-2xl font-semibold text-white">Public and preview Malaysia signals</h2>
+          <div className="mt-5 grid min-w-0 gap-4 md:grid-cols-3">
+            <div className="app-surface-soft rounded-[1.35rem] p-4">
+              <p className="font-montserrat text-[11px] uppercase tracking-[0.18em] text-white/38">Warehouse directory</p>
+              <div className="mt-3 space-y-2">
+                {warehousePreview.slice(0, 3).map((item) => (
+                  <div key={item.name} className="rounded-xl bg-white/[0.04] px-3 py-3">
+                    <p className="font-montserrat text-sm font-semibold text-white">{item.name}</p>
+                    <p className="font-lexend mt-1 text-xs text-white/54">{item.city}, {item.state} • {item.source}</p>
+                  </div>
+                ))}
+              </div>
+              <p className="font-lexend mt-3 text-xs leading-6 text-white/48">Public/preview warehouse directory, not verified capacity.</p>
+            </div>
+            <div className="app-surface-soft rounded-[1.35rem] p-4">
+              <p className="font-montserrat text-[11px] uppercase tracking-[0.18em] text-white/38">Port risk preview</p>
+              <div className="mt-3 space-y-2">
+                {portRisk.slice(0, 3).map((item) => (
+                  <div key={item.port_name} className="rounded-xl bg-white/[0.04] px-3 py-3">
+                    <p className="font-montserrat text-sm font-semibold text-white">{item.port_name}</p>
+                    <p className="font-lexend mt-1 text-xs text-white/54">{item.pressure_status} • Score {item.pressure_score.toFixed(2)}</p>
+                  </div>
+                ))}
+              </div>
+              <p className="font-lexend mt-3 text-xs leading-6 text-white/48">Weather and preview port-risk signals, not live congestion.</p>
+            </div>
+            <div className="app-surface-soft rounded-[1.35rem] p-4">
+              <p className="font-montserrat text-[11px] uppercase tracking-[0.18em] text-white/38">Malaysia demand signals</p>
+              <div className="mt-3 space-y-2">
+                {demandSignals.slice(0, 3).map((item) => (
+                  <div key={item.keyword_or_product} className="rounded-xl bg-white/[0.04] px-3 py-3">
+                    <p className="font-montserrat text-sm font-semibold text-white">{item.keyword_or_product}</p>
+                    <p className="font-lexend mt-1 text-xs text-white/54">{item.category || 'General'} • Score {item.score?.toFixed(1) ?? 'N/A'}</p>
+                  </div>
+                ))}
+              </div>
+              <p className="font-lexend mt-3 text-xs leading-6 text-white/48">Demand signals only. Not confirmed nationwide sales.</p>
+            </div>
+          </div>
+          <div className="mt-4 grid min-w-0 gap-4 md:grid-cols-2">
+            <div className="app-surface-soft rounded-[1.35rem] p-4">
+              <p className="font-montserrat text-[11px] uppercase tracking-[0.18em] text-white/38">BNM FX support</p>
+              <p className="font-montserrat mt-3 text-lg font-semibold text-white">
+                {bnmRates?.rates?.[0] ? `1 ${bnmRates.rates[0].base_currency} = ${bnmRates.rates[0].rate.toFixed(4)} ${bnmRates.rates[0].quote_currency}` : 'No rate available'}
+              </p>
+              <p className="font-lexend mt-3 text-xs leading-6 text-white/48">
+                Official BNM dataset where available. Later reused for landed-cost and purchasing support.
+              </p>
+            </div>
+            <div className="app-surface-soft rounded-[1.35rem] p-4">
+              <p className="font-montserrat text-[11px] uppercase tracking-[0.18em] text-white/38">Provider status</p>
+              <p className="font-montserrat mt-3 text-lg font-semibold text-white">
+                {integrationStatus?.enabled_providers?.length ?? providers.length} enabled
+              </p>
+              <p className="font-lexend mt-3 text-xs leading-6 text-white/48">
+                {integrationStatus?.warnings?.[0] || 'Backend-managed providers only. Secrets never leave FastAPI.'}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div className="app-surface min-w-0 rounded-[1.9rem] p-6">
+          <p className="font-montserrat text-xs uppercase tracking-[0.22em] text-white/38">Premium and Boost</p>
+          <div className="mt-5 grid gap-4">
+            <div className="app-surface-soft rounded-[1.35rem] p-4">
+              <p className="font-montserrat text-sm font-semibold text-white">Premium own-store best sellers</p>
+              <p className="font-lexend mt-3 text-sm leading-7 text-white/58">
+                {user?.subscription_plan === 'FREE'
+                  ? 'Upgrade to Premium to connect Shopee, Lazada, or TikTok Shop and view your own weekly best-selling products.'
+                  : marketplaceStatus === 'available'
+                    ? 'Marketplace provider credentials are ready. Connect your store to unlock user-owned sales sync.'
+                    : 'Marketplace connection stub is available, but no store is connected yet.'}
+              </p>
+            </div>
+            <div className="app-surface-soft rounded-[1.35rem] p-4">
+              <p className="font-montserrat text-sm font-semibold text-white">Boost market intelligence</p>
+              <p className="font-lexend mt-3 text-sm leading-7 text-white/58">
+                {user?.subscription_plan !== 'BOOST'
+                  ? 'Boost is required for market-wide Malaysia best-seller intelligence and paid provider integrations.'
+                  : marketIntelligenceStatus === 'not_configured'
+                    ? 'Paid market-intelligence provider is not configured yet, so no national best-seller claims are shown.'
+                    : 'Paid provider status is available through the backend contract.'}
+              </p>
+            </div>
+            <div className="app-surface-soft rounded-[1.35rem] p-4">
+              <p className="font-montserrat text-sm font-semibold text-white">Provider registry</p>
+              <p className="font-lexend mt-3 text-sm leading-7 text-white/58">
+                {providers.length} backend-managed providers registered. All external data stays behind FastAPI and respects workspace plan gating.
+              </p>
+            </div>
           </div>
         </div>
       </section>

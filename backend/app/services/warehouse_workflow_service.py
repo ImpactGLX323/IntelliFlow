@@ -13,6 +13,7 @@ from app.models import (
     PickList,
     PickListItem,
     SalesOrder,
+    Warehouse,
     WarehouseLocation,
 )
 from app.services.stock_ledger_service import (
@@ -26,12 +27,16 @@ from app.services.stock_ledger_service import (
 def create_warehouse_location(
     db: Session,
     *,
+    owner_id: int,
     warehouse_id: int,
     name: str,
     code: Optional[str],
     location_type: str,
     is_active: bool,
 ) -> WarehouseLocation:
+    warehouse = db.query(Warehouse).filter(Warehouse.id == warehouse_id, Warehouse.owner_id == owner_id).first()
+    if warehouse is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Warehouse not found")
     location = WarehouseLocation(
         warehouse_id=warehouse_id,
         name=name,
@@ -45,18 +50,18 @@ def create_warehouse_location(
     return location
 
 
-def list_warehouse_locations(db: Session, warehouse_id: Optional[int] = None) -> list[WarehouseLocation]:
-    query = db.query(WarehouseLocation).order_by(WarehouseLocation.name.asc())
+def list_warehouse_locations(db: Session, *, owner_id: int, warehouse_id: Optional[int] = None) -> list[WarehouseLocation]:
+    query = db.query(WarehouseLocation).join(Warehouse, Warehouse.id == WarehouseLocation.warehouse_id).filter(Warehouse.owner_id == owner_id).order_by(WarehouseLocation.name.asc())
     if warehouse_id is not None:
         query = query.filter(WarehouseLocation.warehouse_id == warehouse_id)
     return query.all()
 
 
-def create_pick_list_for_sales_order(db: Session, sales_order_id: int) -> PickList:
+def create_pick_list_for_sales_order(db: Session, sales_order_id: int, *, owner_id: int) -> PickList:
     sales_order = (
         db.query(SalesOrder)
         .options(joinedload(SalesOrder.items))
-        .filter(SalesOrder.id == sales_order_id)
+        .filter(SalesOrder.id == sales_order_id, SalesOrder.owner_id == owner_id)
         .first()
     )
     if sales_order is None:

@@ -10,12 +10,13 @@ from app.services.stock_ledger_service import get_available
 def set_reorder_point(
     db: Session,
     *,
+    owner_id: int,
     product_id: int,
     warehouse_id: int,
     minimum_quantity: int,
     reorder_quantity: int,
 ) -> ReorderPoint:
-    product = db.query(Product).filter(Product.id == product_id).first()
+    product = db.query(Product).filter(Product.id == product_id, Product.owner_id == owner_id).first()
     if product is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Product not found")
 
@@ -42,17 +43,19 @@ def set_reorder_point(
     return reorder_point
 
 
-def get_reorder_suggestions(db: Session) -> list[dict]:
+def get_reorder_suggestions(db: Session, *, owner_id: int) -> list[dict]:
     suggestions: list[dict] = []
     reorder_points = db.query(ReorderPoint).all()
     for reorder_point in reorder_points:
         available = get_available(db, reorder_point.product_id, reorder_point.warehouse_id)
         if available > reorder_point.minimum_quantity:
             continue
-        product = db.query(Product).filter(Product.id == reorder_point.product_id).first()
+        product = db.query(Product).filter(Product.id == reorder_point.product_id, Product.owner_id == owner_id).first()
+        if product is None:
+            continue
         supplier = None
-        if product and product.supplier:
-            supplier = db.query(Supplier).filter(Supplier.name == product.supplier).first()
+        if product.supplier:
+            supplier = db.query(Supplier).filter(Supplier.name == product.supplier, Supplier.owner_id == owner_id).first()
         suggestions.append(
             {
                 "product_id": reorder_point.product_id,

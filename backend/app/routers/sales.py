@@ -12,6 +12,7 @@ from app.services.stock_ledger_service import (
     get_stock_position,
     sync_product_current_stock,
 )
+from app.services.notification_service import create_notification
 
 router = APIRouter()
 
@@ -32,7 +33,7 @@ async def create_sale(
             detail="Product not found"
         )
 
-    default_warehouse = get_default_warehouse(db)
+    default_warehouse = get_default_warehouse(db, owner_id=current_user.id)
     stock_position = get_stock_position(db, product.id, default_warehouse.id)
 
     if stock_position["available"] < sale.quantity:
@@ -82,6 +83,26 @@ async def create_sale(
 
         db.commit()
         db.refresh(db_sale)
+        db.refresh(product)
+        create_notification(
+            db,
+            user=current_user,
+            category="stock_deducted",
+            title="Stock deducted",
+            body=f"{sale.quantity} units were deducted for {product.name}.",
+            severity="warning" if product.current_stock <= product.min_stock_threshold else "info",
+            data={"product_id": product.id, "sale_id": db_sale.id, "quantity": sale.quantity},
+        )
+        if product.current_stock <= product.min_stock_threshold:
+            create_notification(
+                db,
+                user=current_user,
+                category="low_stock",
+                title="Low stock threshold reached",
+                body=f"{product.name} is now at or below its minimum threshold after a sale.",
+                severity="warning",
+                data={"product_id": product.id, "current_stock": product.current_stock},
+            )
         return db_sale
     except Exception:
         db.rollback()

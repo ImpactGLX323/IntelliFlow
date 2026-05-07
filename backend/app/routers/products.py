@@ -128,7 +128,7 @@ async def update_product(
         current_available = product.current_stock
         delta = requested_current_stock - current_available
         if delta != 0:
-            default_warehouse = get_default_warehouse(db)
+            default_warehouse = get_default_warehouse(db, owner_id=current_user.id)
             adjust_stock(
                 db,
                 product_id=product.id,

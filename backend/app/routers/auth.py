@@ -6,6 +6,8 @@ from app.schemas import UserCreate, UserResponse
 from app.auth import (
     get_current_user,
 )
+from app.core.plan import get_user_plan
+from app.services.workspace_service import create_organization_for_user, ensure_user_organization
 
 router = APIRouter()
 
@@ -28,11 +30,19 @@ async def register(user_data: UserCreate, db: Session = Depends(get_db)):
         full_name=user_data.full_name
     )
     db.add(new_user)
+    db.flush()
+    create_organization_for_user(db, user=new_user, subscription_plan="FREE")
     db.commit()
     db.refresh(new_user)
     
     return new_user
 
 @router.get("/me", response_model=UserResponse)
-async def get_current_user_info(current_user: User = Depends(get_current_user)):
+async def get_current_user_info(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    ensure_user_organization(db, current_user, default_plan="FREE")
+    setattr(current_user, "organization_id", current_user.organization.id if current_user.organization else None)
+    setattr(current_user, "subscription_plan", get_user_plan(current_user))
     return current_user

@@ -59,21 +59,23 @@ def run() -> None:
 
         purchase_order = create_purchase_order(
             db,
+            owner_id=user.id,
             supplier_id=supplier.id,
             items=[{"product_id": product.id, "warehouse_id": warehouse_a.id, "quantity_ordered": 100, "unit_cost": 10.0}],
         )
-        purchase_order = receive_purchase_order_item(db, purchase_order_id=purchase_order.id, item_id=purchase_order.items[0].id, quantity=60)
+        purchase_order = receive_purchase_order_item(db, owner_id=user.id, purchase_order_id=purchase_order.id, item_id=purchase_order.items[0].id, quantity=60)
         print(f"4. PO partially received: status={purchase_order.status}, received={purchase_order.items[0].quantity_received}")
 
         sales_order = create_sales_order(
             db,
+            owner_id=user.id,
             customer_id=customer.id,
             items=[{"product_id": product.id, "warehouse_id": warehouse_a.id, "quantity_ordered": 30, "unit_price": 25.0}],
         )
-        sales_order = confirm_sales_order(db, sales_order.id)
+        sales_order = confirm_sales_order(db, sales_order.id, owner_id=user.id)
         print(f"5. Sales order confirmed: status={sales_order.status}, reserved={sales_order.items[0].quantity_reserved}")
 
-        sales_order = fulfill_sales_order_item(db, order_id=sales_order.id, item_id=sales_order.items[0].id, quantity=10)
+        sales_order = fulfill_sales_order_item(db, owner_id=user.id, order_id=sales_order.id, item_id=sales_order.items[0].id, quantity=10)
         print(f"6. Sales order partially fulfilled: status={sales_order.status}, fulfilled={sales_order.items[0].quantity_fulfilled}")
 
         transfer = transfer_stock(
@@ -88,6 +90,7 @@ def run() -> None:
 
         return_order = create_return_order(
             db,
+            owner_id=user.id,
             sales_order_id=sales_order.id,
             customer_id=customer.id,
             items=[
@@ -103,12 +106,13 @@ def run() -> None:
                 }
             ],
         )
-        return_order = approve_return_order(db, return_order.id)
-        return_order = receive_return_item(db, return_id=return_order.id, item_id=return_order.items[0].id, quantity=2)
+        return_order = approve_return_order(db, return_order.id, owner_id=user.id)
+        return_order = receive_return_item(db, owner_id=user.id, return_id=return_order.id, item_id=return_order.items[0].id, quantity=2)
         print(f"8. Return received: status={return_order.status}, refund={return_order.refund_amount}")
 
         report = get_profit_leakage_report(
             db,
+            owner_id=user.id,
             start_date=datetime.now(timezone.utc) - timedelta(days=30),
             end_date=datetime.now(timezone.utc) + timedelta(days=1),
         )
@@ -116,6 +120,7 @@ def run() -> None:
 
         shipment = create_shipment(
             db,
+            owner_id=user.id,
             related_type="PURCHASE_ORDER",
             related_id=str(purchase_order.id),
             carrier_name="Oceanic Freight",
@@ -126,12 +131,13 @@ def run() -> None:
         shipment = update_shipment_status(
             db,
             shipment.id,
+            owner_id=user.id,
             status="DELAYED",
             delay_reason="Weather delay",
         )
         print(f"10. Shipment delayed: shipment={shipment.shipment_number}, status={shipment.status}")
 
-        impact = calculate_delay_impact(db, shipment.id)
+        impact = calculate_delay_impact(db, shipment.id, owner_id=user.id)
         print(f"11. Delay impact: delay_days={impact['estimated_delay_days']}, risk={impact['risk_level']}, products={impact['affected_products']}")
 
         position_a = get_stock_position(db, product.id, warehouse_a.id)

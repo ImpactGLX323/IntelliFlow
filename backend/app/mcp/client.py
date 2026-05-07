@@ -7,6 +7,7 @@ from fastapi import HTTPException, status
 
 from sqlalchemy.orm import Session
 
+from app.core.config import get_app_config
 from app.mcp.authz import enforce_resource_access, enforce_tool_access
 from app.mcp.registry import MCPRegistry
 from app.mcp.schemas import MCPRequestContext, MCPToolResult, PlanLevel
@@ -15,12 +16,9 @@ from app.models import User
 
 
 def resolve_plan_level(user: User) -> PlanLevel:
-    """
-    Resolve a user's MCP plan from whatever subscription field the app may have.
-
-    The current user model does not yet persist subscription state, so this
-    intentionally defaults to FREE unless a compatible attribute is added later.
-    """
+    override = get_app_config().testing_plan_override
+    if override:
+        return parse_plan_level(override)
     for attr_name in ("plan_level", "subscription_plan", "subscription_tier"):
         raw_value = getattr(user, attr_name, None)
         if not raw_value:
@@ -29,6 +27,10 @@ def resolve_plan_level(user: User) -> PlanLevel:
             return parse_plan_level(raw_value)
         except ValueError:
             continue
+    organization = getattr(user, "organization", None)
+    organization_plan = getattr(organization, "subscription_plan", None) if organization is not None else None
+    if organization_plan:
+        return parse_plan_level(organization_plan)
     return PlanLevel.FREE
 
 
@@ -44,19 +46,8 @@ def parse_plan_level(value: str | PlanLevel | None) -> PlanLevel:
 
 
 def effective_plan_level(user: User, requested_plan: str | PlanLevel | None = None) -> PlanLevel:
-    """
-    Resolve the effective MCP plan for a request.
-
-    If the user model later stores a persisted subscription tier, that tier acts
-    as the server-side ceiling. Until then, the requested plan is used so the
-    orchestrator can still apply MCP gating consistently for signed-in clients.
-    """
-    persisted_plan = resolve_plan_level(user)
-    requested = parse_plan_level(requested_plan)
-    if persisted_plan != PlanLevel.FREE or getattr(user, "plan_level", None) or getattr(user, "subscription_plan", None) or getattr(user, "subscription_tier", None):
-        plan_rank = {PlanLevel.FREE: 0, PlanLevel.PRO: 1, PlanLevel.BOOST: 2}
-        return persisted_plan if plan_rank[persisted_plan] <= plan_rank[requested] else requested
-    return requested
+    _ = requested_plan
+    return resolve_plan_level(user)
 
 
 def resolve_scopes(user: User) -> list[str]:

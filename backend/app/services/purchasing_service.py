@@ -6,20 +6,20 @@ from typing import Optional
 from fastapi import HTTPException, status
 from sqlalchemy.orm import Session, joinedload
 
-from app.models import Product, PurchaseOrder, PurchaseOrderItem, Warehouse
+from app.models import Product, PurchaseOrder, PurchaseOrderItem, Supplier, Warehouse
 from app.services.stock_ledger_service import receive_purchase
 
 
-def _generate_po_number(db: Session) -> str:
-    count = db.query(PurchaseOrder).count() + 1
+def _generate_po_number(db: Session, *, owner_id: int) -> str:
+    count = db.query(PurchaseOrder).filter(PurchaseOrder.owner_id == owner_id).count() + 1
     return f"PO-{datetime.utcnow().strftime('%Y%m%d')}-{count:04d}"
 
 
-def _load_purchase_order(db: Session, purchase_order_id: int) -> PurchaseOrder:
+def _load_purchase_order(db: Session, purchase_order_id: int, *, owner_id: int) -> PurchaseOrder:
     purchase_order = (
         db.query(PurchaseOrder)
         .options(joinedload(PurchaseOrder.items))
-        .filter(PurchaseOrder.id == purchase_order_id)
+        .filter(PurchaseOrder.id == purchase_order_id, PurchaseOrder.owner_id == owner_id)
         .first()
     )
     if purchase_order is None:
@@ -43,6 +43,7 @@ def _recompute_purchase_order_status(purchase_order: PurchaseOrder) -> None:
 def create_purchase_order(
     db: Session,
     *,
+    owner_id: int,
     supplier_id: Optional[int],
     items: list[dict],
     order_date: Optional[datetime] = None,
@@ -51,10 +52,15 @@ def create_purchase_order(
 ) -> PurchaseOrder:
     if not items:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Purchase order must include at least one item")
+    if supplier_id is not None:
+        supplier = db.query(Supplier).filter(Supplier.id == supplier_id, Supplier.owner_id == owner_id).first()
+        if supplier is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Supplier not found")
 
     purchase_order = PurchaseOrder(
-        po_number=_generate_po_number(db),
+        po_number=_generate_po_number(db, owner_id=owner_id),
         supplier_id=supplier_id,
+        owner_id=owner_id,
         status="DRAFT",
         order_date=order_date or datetime.utcnow(),
         expected_arrival_date=expected_arrival_date,
@@ -64,7 +70,7 @@ def create_purchase_order(
     db.flush()
 
     for item_data in items:
-        product = db.query(Product).filter(Product.id == item_data["product_id"]).first()
+        product = db.query(Product).filter(Product.id == item_data["product_id"], Product.owner_id == owner_id).first()
         if product is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Product {item_data['product_id']} not found")
         item = PurchaseOrderItem(
@@ -77,11 +83,11 @@ def create_purchase_order(
         db.add(item)
 
     db.commit()
-    return _load_purchase_order(db, purchase_order.id)
+    return _load_purchase_order(db, purchase_order.id, owner_id=owner_id)
 
 
-def mark_purchase_order_ordered(db: Session, purchase_order_id: int) -> PurchaseOrder:
-    purchase_order = _load_purchase_order(db, purchase_order_id)
+def mark_purchase_order_ordered(db: Session, purchase_order_id: int, *, owner_id: int) -> PurchaseOrder:
+    purchase_order = _load_purchase_order(db, purchase_order_id, owner_id=owner_id)
     if purchase_order.status == "CANCELLED":
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Purchase order is cancelled")
     if purchase_order.status not in {"DRAFT", "ORDERED"}:
@@ -89,17 +95,18 @@ def mark_purchase_order_ordered(db: Session, purchase_order_id: int) -> Purchase
     purchase_order.status = "ORDERED"
     db.add(purchase_order)
     db.commit()
-    return _load_purchase_order(db, purchase_order.id)
+    return _load_purchase_order(db, purchase_order.id, owner_id=owner_id)
 
 
 def receive_purchase_order_item(
     db: Session,
     *,
+    owner_id: int,
     purchase_order_id: int,
     item_id: int,
     quantity: int,
 ) -> PurchaseOrder:
-    purchase_order = _load_purchase_order(db, purchase_order_id)
+    purchase_order = _load_purchase_order(db, purchase_order_id, owner_id=owner_id)
     if purchase_order.status == "CANCELLED":
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Purchase order is cancelled")
     item = next((row for row in purchase_order.items if row.id == item_id), None)
@@ -112,7 +119,7 @@ def receive_purchase_order_item(
 
     warehouse_id = item.warehouse_id
     if warehouse_id is None:
-        default_warehouse = db.query(Warehouse).order_by(Warehouse.id.asc()).first()
+        default_warehouse = db.query(Warehouse).filter(Warehouse.owner_id == owner_id).order_by(Warehouse.id.asc()).first()
         if default_warehouse is None:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No warehouse available for receiving")
         warehouse_id = default_warehouse.id
@@ -132,28 +139,28 @@ def receive_purchase_order_item(
         _recompute_purchase_order_status(purchase_order)
         db.add(purchase_order)
         db.commit()
-        return _load_purchase_order(db, purchase_order.id)
+        return _load_purchase_order(db, purchase_order.id, owner_id=owner_id)
     except Exception:
         db.rollback()
         raise
 
 
-def cancel_purchase_order(db: Session, purchase_order_id: int) -> PurchaseOrder:
-    purchase_order = _load_purchase_order(db, purchase_order_id)
+def cancel_purchase_order(db: Session, purchase_order_id: int, *, owner_id: int) -> PurchaseOrder:
+    purchase_order = _load_purchase_order(db, purchase_order_id, owner_id=owner_id)
     if purchase_order.status == "RECEIVED":
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Fully received purchase order cannot be cancelled")
     purchase_order.status = "CANCELLED"
     db.add(purchase_order)
     db.commit()
-    return _load_purchase_order(db, purchase_order.id)
+    return _load_purchase_order(db, purchase_order.id, owner_id=owner_id)
 
 
-def get_purchase_order(db: Session, purchase_order_id: int) -> PurchaseOrder:
-    return _load_purchase_order(db, purchase_order_id)
+def get_purchase_order(db: Session, purchase_order_id: int, *, owner_id: int) -> PurchaseOrder:
+    return _load_purchase_order(db, purchase_order_id, owner_id=owner_id)
 
 
-def list_purchase_orders(db: Session, status_filter: Optional[str] = None) -> list[PurchaseOrder]:
-    query = db.query(PurchaseOrder).options(joinedload(PurchaseOrder.items)).order_by(PurchaseOrder.created_at.desc())
+def list_purchase_orders(db: Session, *, owner_id: int, status_filter: Optional[str] = None) -> list[PurchaseOrder]:
+    query = db.query(PurchaseOrder).options(joinedload(PurchaseOrder.items)).filter(PurchaseOrder.owner_id == owner_id).order_by(PurchaseOrder.created_at.desc())
     if status_filter:
         query = query.filter(PurchaseOrder.status == status_filter)
     return query.all()

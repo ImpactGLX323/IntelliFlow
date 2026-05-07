@@ -109,15 +109,17 @@ async def public_ai_copilot_query(
     payload: AICopilotRequest,
     request: Request,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     orchestrator = CopilotOrchestrator(request.app.state.internal_mcp)
     try:
         result = orchestrator.handle_copilot_query(
             db=db,
+            user=current_user,
             message=payload.message,
             organization_id=payload.organization_id,
             user_plan=payload.user_plan,
-            user_id=payload.user_id,
+            user_id=str(current_user.id),
         )
         return AICopilotResponse(**result)
     except HTTPException:

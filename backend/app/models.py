@@ -5,6 +5,7 @@ from sqlalchemy import (
     Float,
     JSON,
     DateTime,
+    Date,
     ForeignKey,
     Text,
     Boolean,
@@ -12,6 +13,21 @@ from sqlalchemy import (
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from app.database import Base
+
+class Organization(Base):
+    __tablename__ = "organizations"
+
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, nullable=False, index=True)
+    slug = Column(String, nullable=False, unique=True, index=True)
+    subscription_plan = Column(String, nullable=False, default="FREE", index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    users = relationship("User", back_populates="organization")
+    external_api_connections = relationship("ExternalApiConnection", back_populates="organization")
+    external_api_usage_logs = relationship("ExternalApiUsageLog", back_populates="organization")
+
 
 class User(Base):
     __tablename__ = "users"
@@ -21,8 +37,10 @@ class User(Base):
     firebase_uid = Column(String, unique=True, index=True, nullable=False)
     full_name = Column(String, nullable=True)
     is_active = Column(Boolean, default=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=True, index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     
+    organization = relationship("Organization", back_populates="users")
     products = relationship("Product", back_populates="owner")
     sales = relationship("Sale", back_populates="owner")
     created_inventory_transactions = relationship(
@@ -36,6 +54,21 @@ class User(Base):
         back_populates="approved_by_user",
     )
     agent_recommendations = relationship("AgentRecommendation", back_populates="owner")
+    notifications = relationship("Notification", back_populates="user", cascade="all, delete-orphan")
+    notification_preferences = relationship("NotificationPreference", back_populates="user", cascade="all, delete-orphan")
+    devices = relationship("UserDevice", back_populates="user", cascade="all, delete-orphan")
+    e_invoice_documents = relationship("EInvoiceDocument", back_populates="owner", cascade="all, delete-orphan")
+    external_api_connections = relationship("ExternalApiConnection", back_populates="user")
+    external_api_usage_logs = relationship("ExternalApiUsageLog", back_populates="user")
+    warehouses = relationship("Warehouse", back_populates="owner")
+    customers = relationship("Customer", back_populates="owner")
+    suppliers = relationship("Supplier", back_populates="owner")
+    sales_orders = relationship("SalesOrder", back_populates="owner")
+    purchase_orders = relationship("PurchaseOrder", back_populates="owner")
+    return_orders = relationship("ReturnOrder", back_populates="owner")
+    shipments = relationship("Shipment", back_populates="owner")
+    routes = relationship("Route", back_populates="owner")
+    ports_or_nodes = relationship("PortOrNode", back_populates="owner")
 
 class Product(Base):
     __tablename__ = "products"
@@ -90,6 +123,7 @@ class Sale(Base):
     
     product = relationship("Product", back_populates="sales")
     owner = relationship("User", back_populates="sales")
+    e_invoice_documents = relationship("EInvoiceDocument", back_populates="sale")
 
 class InventoryHistory(Base):
     __tablename__ = "inventory_history"
@@ -114,9 +148,11 @@ class Warehouse(Base):
     code = Column(String, nullable=False, unique=True, index=True)
     address = Column(Text, nullable=True)
     is_active = Column(Boolean, default=True, nullable=False)
+    owner_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
+    owner = relationship("User", back_populates="warehouses")
     inventory_transactions = relationship(
         "InventoryTransaction",
         back_populates="warehouse",
@@ -221,9 +257,11 @@ class Customer(Base):
     email = Column(String, nullable=True, index=True)
     phone = Column(String, nullable=True)
     address = Column(Text, nullable=True)
+    owner_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
+    owner = relationship("User", back_populates="customers")
     sales_orders = relationship("SalesOrder", back_populates="customer")
     return_orders = relationship("ReturnOrder", back_populates="customer")
 
@@ -237,11 +275,151 @@ class Supplier(Base):
     phone = Column(String, nullable=True)
     address = Column(Text, nullable=True)
     lead_time_days = Column(Integer, nullable=True)
+    owner_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
+    owner = relationship("User", back_populates="suppliers")
     purchase_orders = relationship("PurchaseOrder", back_populates="supplier")
     return_order_items = relationship("ReturnOrderItem", back_populates="supplier")
+
+
+class EInvoiceDocument(Base):
+    __tablename__ = "e_invoice_documents"
+
+    id = Column(Integer, primary_key=True, index=True)
+    sale_id = Column(Integer, ForeignKey("sales.id"), nullable=False, index=True)
+    owner_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    document_number = Column(String, nullable=False, unique=True, index=True)
+    status = Column(String, nullable=False, default="READY", index=True)
+    invoice_type = Column(String, nullable=False, default="01")
+    currency = Column(String, nullable=False, default="MYR")
+    buyer_name = Column(String, nullable=True)
+    buyer_email = Column(String, nullable=True)
+    buyer_tin = Column(String, nullable=True)
+    seller_name = Column(String, nullable=False)
+    seller_tin = Column(String, nullable=True)
+    issue_date = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), index=True)
+    subtotal = Column(Float, nullable=False, default=0.0)
+    tax_amount = Column(Float, nullable=False, default=0.0)
+    total_amount = Column(Float, nullable=False, default=0.0)
+    validation_status = Column(String, nullable=False, default="READY", index=True)
+    validation_notes = Column(JSON, nullable=False, default=list)
+    line_items = Column(JSON, nullable=False, default=list)
+    lhdn_reference = Column(String, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    sale = relationship("Sale", back_populates="e_invoice_documents")
+    owner = relationship("User", back_populates="e_invoice_documents")
+
+
+class ExternalApiProvider(Base):
+    __tablename__ = "external_api_providers"
+
+    id = Column(Integer, primary_key=True, index=True)
+    key = Column(String, nullable=False, unique=True, index=True)
+    name = Column(String, nullable=False)
+    category = Column(String, nullable=False, index=True)
+    provider_type = Column(String, nullable=False, index=True)
+    required_plan = Column(String, nullable=False, default="FREE", index=True)
+    is_enabled = Column(Boolean, nullable=False, default=True)
+    is_live_capable = Column(Boolean, nullable=False, default=False)
+    notes = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+class ExternalApiConnection(Base):
+    __tablename__ = "external_api_connections"
+
+    id = Column(Integer, primary_key=True, index=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
+    provider_key = Column(String, nullable=False, index=True)
+    status = Column(String, nullable=False, default="NOT_CONFIGURED", index=True)
+    access_token_encrypted = Column(Text, nullable=True)
+    refresh_token_encrypted = Column(Text, nullable=True)
+    expires_at = Column(DateTime(timezone=True), nullable=True)
+    metadata_json = Column("metadata", JSON, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    organization = relationship("Organization", back_populates="external_api_connections")
+    user = relationship("User", back_populates="external_api_connections")
+
+
+class ExternalApiCache(Base):
+    __tablename__ = "external_api_cache"
+
+    id = Column(Integer, primary_key=True, index=True)
+    provider_key = Column(String, nullable=False, index=True)
+    cache_key = Column(String, nullable=False, unique=True, index=True)
+    response_json = Column(JSON, nullable=False)
+    expires_at = Column(DateTime(timezone=True), nullable=False, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class ExternalApiUsageLog(Base):
+    __tablename__ = "external_api_usage_logs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    provider_key = Column(String, nullable=False, index=True)
+    organization_id = Column(Integer, ForeignKey("organizations.id"), nullable=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
+    endpoint = Column(String, nullable=False, index=True)
+    status_code = Column(Integer, nullable=True)
+    cache_hit = Column(Boolean, nullable=False, default=False)
+    plan = Column(String, nullable=True, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
+
+    organization = relationship("Organization", back_populates="external_api_usage_logs")
+    user = relationship("User", back_populates="external_api_usage_logs")
+
+
+class WarehouseDirectoryRecord(Base):
+    __tablename__ = "warehouse_directory_records"
+
+    id = Column(Integer, primary_key=True, index=True)
+    source = Column(String, nullable=False, index=True)
+    name = Column(String, nullable=False, index=True)
+    provider_key = Column(String, nullable=True, index=True)
+    country = Column(String, nullable=False, default="MY", index=True)
+    state = Column(String, nullable=True, index=True)
+    city = Column(String, nullable=True, index=True)
+    address = Column(Text, nullable=True)
+    latitude = Column(Float, nullable=True)
+    longitude = Column(Float, nullable=True)
+    warehouse_type = Column(String, nullable=True, index=True)
+    is_verified = Column(Boolean, nullable=False, default=False)
+    is_preview = Column(Boolean, nullable=False, default=False)
+    metadata_json = Column("metadata", JSON, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+
+class MarketDemandSignal(Base):
+    __tablename__ = "market_demand_signals"
+
+    id = Column(Integer, primary_key=True, index=True)
+    country = Column(String, nullable=False, default="MY", index=True)
+    week_start = Column(Date, nullable=False, index=True)
+    week_end = Column(Date, nullable=False, index=True)
+    source = Column(String, nullable=False, index=True)
+    data_type = Column(String, nullable=False, index=True)
+    category = Column(String, nullable=True, index=True)
+    keyword_or_product = Column(String, nullable=False, index=True)
+    rank = Column(Integer, nullable=True)
+    score = Column(Float, nullable=True)
+    units_sold = Column(Integer, nullable=True)
+    revenue = Column(Float, nullable=True)
+    currency = Column(String, nullable=False, default="MYR")
+    confidence = Column(String, nullable=False, default="LOW", index=True)
+    is_live = Column(Boolean, nullable=False, default=False)
+    is_estimated = Column(Boolean, nullable=False, default=True)
+    metadata_json = Column("metadata", JSON, nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
 
 class SalesOrder(Base):
@@ -251,6 +429,7 @@ class SalesOrder(Base):
     order_number = Column(String, nullable=False, unique=True, index=True)
     customer_id = Column(Integer, ForeignKey("customers.id"), nullable=True, index=True)
     status = Column(String, nullable=False, default="DRAFT", index=True)
+    owner_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
     order_date = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
     expected_ship_date = Column(DateTime(timezone=True), nullable=True)
     notes = Column(Text, nullable=True)
@@ -258,6 +437,7 @@ class SalesOrder(Base):
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
     customer = relationship("Customer", back_populates="sales_orders")
+    owner = relationship("User", back_populates="sales_orders")
     items = relationship("SalesOrderItem", back_populates="sales_order", cascade="all, delete-orphan")
     pick_lists = relationship("PickList", back_populates="sales_order", cascade="all, delete-orphan")
     packing_records = relationship("PackingRecord", back_populates="sales_order", cascade="all, delete-orphan")
@@ -291,6 +471,7 @@ class PurchaseOrder(Base):
     po_number = Column(String, nullable=False, unique=True, index=True)
     supplier_id = Column(Integer, ForeignKey("suppliers.id"), nullable=True, index=True)
     status = Column(String, nullable=False, default="DRAFT", index=True)
+    owner_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
     order_date = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
     expected_arrival_date = Column(DateTime(timezone=True), nullable=True)
     notes = Column(Text, nullable=True)
@@ -298,6 +479,7 @@ class PurchaseOrder(Base):
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
     supplier = relationship("Supplier", back_populates="purchase_orders")
+    owner = relationship("User", back_populates="purchase_orders")
     items = relationship("PurchaseOrderItem", back_populates="purchase_order", cascade="all, delete-orphan")
 
 
@@ -437,6 +619,7 @@ class ReturnOrder(Base):
     sales_order_id = Column(Integer, ForeignKey("sales_orders.id"), nullable=True, index=True)
     customer_id = Column(Integer, ForeignKey("customers.id"), nullable=True, index=True)
     status = Column(String, nullable=False, default="REQUESTED", index=True)
+    owner_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
     return_date = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
     refund_amount = Column(Float, nullable=False, default=0)
     replacement_cost = Column(Float, nullable=False, default=0)
@@ -446,6 +629,7 @@ class ReturnOrder(Base):
 
     sales_order = relationship("SalesOrder", back_populates="return_orders")
     customer = relationship("Customer", back_populates="return_orders")
+    owner = relationship("User", back_populates="return_orders")
     items = relationship("ReturnOrderItem", back_populates="return_order", cascade="all, delete-orphan")
 
 
@@ -482,6 +666,7 @@ class Shipment(Base):
     carrier_name = Column(String, nullable=True)
     tracking_number = Column(String, nullable=True, index=True)
     status = Column(String, nullable=False, default="CREATED", index=True)
+    owner_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
     origin = Column(String, nullable=True)
     destination = Column(String, nullable=True)
     estimated_arrival = Column(DateTime(timezone=True), nullable=True)
@@ -492,6 +677,7 @@ class Shipment(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
+    owner = relationship("User", back_populates="shipments")
     legs = relationship("ShipmentLeg", back_populates="shipment", cascade="all, delete-orphan")
 
 
@@ -523,10 +709,12 @@ class Route(Base):
     origin = Column(String, nullable=False)
     destination = Column(String, nullable=False)
     mode = Column(String, nullable=False, default="ROAD", index=True)
+    owner_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
     average_transit_days = Column(Integer, nullable=True)
     risk_level = Column(String, nullable=False, default="MEDIUM", index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    owner = relationship("User", back_populates="routes")
 
 
 class PortOrNode(Base):
@@ -537,8 +725,11 @@ class PortOrNode(Base):
     name = Column(String, nullable=False, index=True)
     country = Column(String, nullable=True)
     node_type = Column(String, nullable=False, default="PORT", index=True)
+    owner_id = Column(Integer, ForeignKey("users.id"), nullable=True, index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    owner = relationship("User", back_populates="ports_or_nodes")
 
 class RiskAlert(Base):
     __tablename__ = "risk_alerts"
@@ -573,3 +764,48 @@ class AgentRecommendation(Base):
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
     owner = relationship("User", back_populates="agent_recommendations")
+
+
+class Notification(Base):
+    __tablename__ = "notifications"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    category = Column(String, nullable=False, index=True)
+    severity = Column(String, nullable=False, default="info", index=True)
+    title = Column(String, nullable=False)
+    body = Column(Text, nullable=False)
+    data = Column(JSON, nullable=True)
+    read_at = Column(DateTime(timezone=True), nullable=True, index=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), index=True)
+
+    user = relationship("User", back_populates="notifications")
+
+
+class NotificationPreference(Base):
+    __tablename__ = "notification_preferences"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    category = Column(String, nullable=False, index=True)
+    enabled = Column(Boolean, nullable=False, default=True)
+    push_enabled = Column(Boolean, nullable=False, default=False)
+    email_enabled = Column(Boolean, nullable=False, default=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+    user = relationship("User", back_populates="notification_preferences")
+
+
+class UserDevice(Base):
+    __tablename__ = "user_devices"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    platform = Column(String, nullable=False, index=True)
+    push_token = Column(String, nullable=False, unique=True, index=True)
+    app_version = Column(String, nullable=True)
+    last_seen_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    user = relationship("User", back_populates="devices")

@@ -44,11 +44,14 @@ export interface AICapabilities {
 }
 
 export interface CopilotQueryResponse {
-  domain: string
-  action: string
-  query: string
-  result: Record<string, unknown>
+  intent: string
+  tools_used: string[]
+  answer: string
+  data: Record<string, unknown>
+  citations: Array<Record<string, unknown>>
+  recommendations: string[]
   warnings: string[]
-  permission_denied: boolean
+  upgrade_required: boolean
+  required_plan: 'FREE' | 'PRO' | 'BOOST' | null
   request_id: string | null
 }

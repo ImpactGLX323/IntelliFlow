@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import CopilotResultCard from '@/components/ui/CopilotResultCard'
 import PlanAccessNotice from '@/components/ui/PlanAccessNotice'
 import RecommendationCard from '@/components/ui/RecommendationCard'
 import { copilotAPI } from '@/lib/api'
@@ -49,8 +50,8 @@ export default function LogisticsPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <section className="rounded-[1.6rem] border border-white/12 bg-white/[0.04] p-6 backdrop-blur-sm">
+    <div className="space-y-6 overflow-x-hidden">
+      <section className="min-w-0 rounded-[1.6rem] border border-white/12 bg-white/[0.04] p-6 backdrop-blur-sm">
         <p className="font-montserrat text-xs font-semibold uppercase tracking-[0.28em] text-[#ff9b3d]/75">Logistics Control Tower</p>
         <h1 className="font-montserrat mt-4 text-[clamp(2rem,6vw,3rem)] font-semibold leading-[0.98] tracking-[-0.04em] text-white">
           Delay visibility with business impact.
@@ -60,14 +61,9 @@ export default function LogisticsPage() {
         </p>
       </section>
 
-      <section className="rounded-[1.6rem] border border-white/12 bg-white/[0.04] p-6 backdrop-blur-sm">
-        <p className="font-montserrat text-xs uppercase tracking-[0.18em] text-white/42">Control tower output</p>
-        <pre className="mt-4 overflow-x-auto rounded-2xl bg-white/[0.04] p-4 text-xs text-white/72">
-          {JSON.stringify(response?.result ?? {}, null, 2)}
-        </pre>
-      </section>
+      {response && <CopilotResultCard response={response} />}
 
-      <div className="grid gap-4">
+      <div className="grid min-w-0 gap-4">
         {recommendations.map((recommendation) => (
           <RecommendationCard key={recommendation.id} recommendation={recommendation} />
         ))}

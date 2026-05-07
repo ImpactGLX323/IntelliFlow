@@ -3,7 +3,9 @@
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import PlanAccessNotice from '@/components/ui/PlanAccessNotice'
+import StructuredDataPanel from '@/components/ui/StructuredDataPanel'
 import { copilotAPI, productsAPI, salesAPI } from '@/lib/api'
+import { formatCurrency } from '@/lib/utils/format'
 import type { AICapabilities, CopilotQueryResponse } from '@/types/copilot'
 import type { Product } from '@/types/product'
 import type { Sale } from '@/types/sales'
@@ -24,6 +26,42 @@ const initialForm: SalesFormState = {
   sale_date: new Date().toISOString().split('T')[0],
   customer_id: '',
   order_id: '',
+}
+
+function toDisplayLabel(value: string) {
+  return value.replaceAll('_', ' ').replaceAll('-', ' ')
+}
+
+function formatInsightValue(key: string, value: unknown) {
+  if (typeof value === 'number') {
+    if (/(revenue|price|amount|margin|cost|value)/i.test(key)) {
+      return formatCurrency(value)
+    }
+    return Number.isInteger(value) ? value.toLocaleString() : value.toFixed(2)
+  }
+  return String(value)
+}
+
+function extractBestSellerItems(data: Record<string, unknown> | null | undefined) {
+  if (!data) {
+    return []
+  }
+
+  const candidates = [
+    data.items,
+    data.best_sellers,
+    data.best_selling_products,
+    data.products,
+    data.results,
+  ]
+
+  for (const candidate of candidates) {
+    if (Array.isArray(candidate)) {
+      return candidate.filter((item): item is Record<string, unknown> => typeof item === 'object' && item !== null)
+    }
+  }
+
+  return []
 }
 
 export default function SalesPage() {
@@ -108,6 +146,7 @@ export default function SalesPage() {
   }
 
   const totalRevenue = sales.reduce((sum, sale) => sum + sale.total_amount, 0)
+  const bestSellerItems = extractBestSellerItems(salesInsight?.data)
 
   return (
     <div className="space-y-6 overflow-x-hidden">
@@ -128,14 +167,52 @@ export default function SalesPage() {
           {capabilities?.features.sales_insights ? (
             <>
               <p className="font-montserrat text-[11px] uppercase tracking-[0.18em] text-white/40">This week&apos;s best sellers</p>
-              <pre className="mt-4 overflow-x-auto rounded-2xl bg-white/[0.04] p-4 text-xs text-white/72">
-                {JSON.stringify(salesInsight?.result ?? {}, null, 2)}
-              </pre>
+              {salesInsight?.answer && (
+                <div className="mt-4 rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-4 text-sm leading-7 text-white/82">
+                  {salesInsight.answer}
+                </div>
+              )}
+              {bestSellerItems.length > 0 ? (
+                <div className="mt-4 grid min-w-0 gap-3">
+                  {bestSellerItems.map((item, index) => {
+                    const entries = Object.entries(item)
+                    const nameEntry =
+                      entries.find(([key]) => ['product_name', 'name', 'title', 'sku'].includes(key)) ??
+                      entries[0]
+
+                    const detailEntries = entries.filter(([key]) => key !== nameEntry?.[0])
+
+                    return (
+                      <div key={`${String(nameEntry?.[1] ?? 'item')}-${index}`} className="min-w-0 rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+                        <p className="font-montserrat text-sm font-semibold text-white break-words">
+                          {String(nameEntry?.[1] ?? `Product ${index + 1}`)}
+                        </p>
+                        <div className="mt-3 grid min-w-0 gap-3 sm:grid-cols-2">
+                          {detailEntries.map(([key, value]) => (
+                            <div key={key} className="min-w-0 rounded-xl bg-white/[0.04] px-3 py-3">
+                              <p className="font-montserrat text-[10px] uppercase tracking-[0.14em] text-white/38">
+                                {toDisplayLabel(key)}
+                              </p>
+                              <p className="mt-2 break-words text-sm leading-7 text-white/82">
+                                {formatInsightValue(key, value)}
+                              </p>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              ) : (
+                <div className="mt-4">
+                  <StructuredDataPanel data={salesInsight?.data ?? {}} emptyMessage="No sales insight items available." />
+                </div>
+              )}
             </>
           ) : (
             <PlanAccessNotice
-              requiredPlan="PRO"
-              title="Sales insights are available on Pro."
+              requiredPlan="PREMIUM"
+              title="Sales insights are available on Premium."
               body="Backend-enforced MCP sales analytics stay locked on Free, even if the frontend route is accessible."
             />
           )}
@@ -158,7 +235,7 @@ export default function SalesPage() {
         <div className="min-w-0 rounded-[1.5rem] border border-white/12 bg-white/[0.04] p-5 backdrop-blur-sm sm:rounded-[2rem] sm:p-6">
           <div className="grid min-w-0 gap-4 sm:grid-cols-3">
             {[
-              ['Revenue', `$${totalRevenue.toFixed(2)}`],
+              ['Revenue', formatCurrency(totalRevenue)],
               ['Transactions', sales.length.toString()],
               ['Products Sold', new Set(sales.map((sale) => sale.product_id)).size.toString()],
             ].map(([label, value]) => (
@@ -287,8 +364,8 @@ export default function SalesPage() {
                     </Link>
                   </td>
                   <td className="px-6 py-5 font-montserrat text-white">{sale.quantity}</td>
-                  <td className="px-6 py-5 font-montserrat text-white">${sale.unit_price.toFixed(2)}</td>
-                  <td className="px-6 py-5 font-montserrat text-white">${sale.total_amount.toFixed(2)}</td>
+                  <td className="px-6 py-5 font-montserrat text-white">{formatCurrency(sale.unit_price)}</td>
+                  <td className="px-6 py-5 font-montserrat text-white">{formatCurrency(sale.total_amount)}</td>
                   <td className="px-6 py-5 font-lexend text-white/64">{sale.order_id || '-'}</td>
                 </tr>
               ))}

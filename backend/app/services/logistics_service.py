@@ -24,8 +24,8 @@ from app.services import purchasing_service, sales_service
 from app.services.stock_ledger_service import get_available
 
 
-def _generate_shipment_number(db: Session) -> str:
-    count = db.query(Shipment).count() + 1
+def _generate_shipment_number(db: Session, *, owner_id: int) -> str:
+    count = db.query(Shipment).filter(Shipment.owner_id == owner_id).count() + 1
     return f"SHP-{datetime.utcnow().strftime('%Y%m%d')}-{count:04d}"
 
 
@@ -66,14 +66,14 @@ def _product_summary(db: Session, product_id: int, quantity: int) -> dict:
     }
 
 
-def _resolve_related_context(db: Session, shipment: Shipment) -> dict:
+def _resolve_related_context(db: Session, shipment: Shipment, *, owner_id: int) -> dict:
     affected_purchase_orders: list[dict] = []
     affected_sales_orders: list[dict] = []
     affected_products: list[dict] = []
     revenue_at_risk = None
 
     if shipment.related_type == "PURCHASE_ORDER" and shipment.related_id:
-        purchase_order = purchasing_service.get_purchase_order(db, int(shipment.related_id))
+        purchase_order = purchasing_service.get_purchase_order(db, int(shipment.related_id), owner_id=owner_id)
         affected_purchase_orders.append(
             {
                 "id": purchase_order.id,
@@ -87,7 +87,7 @@ def _resolve_related_context(db: Session, shipment: Shipment) -> dict:
             affected_products.append(_product_summary(db, item.product_id, remaining))
 
     elif shipment.related_type == "SALES_ORDER" and shipment.related_id:
-        sales_order = sales_service.get_sales_order(db, int(shipment.related_id))
+        sales_order = sales_service.get_sales_order(db, int(shipment.related_id), owner_id=owner_id)
         affected_sales_orders.append(
             {
                 "id": sales_order.id,
@@ -103,7 +103,12 @@ def _resolve_related_context(db: Session, shipment: Shipment) -> dict:
             revenue_at_risk += outstanding * item.unit_price
 
     elif shipment.related_type == "TRANSFER" and shipment.related_id:
-        transfer = db.query(StockTransfer).filter(StockTransfer.id == int(shipment.related_id)).first()
+        transfer = (
+            db.query(StockTransfer)
+            .join(Product, Product.id == StockTransfer.product_id)
+            .filter(StockTransfer.id == int(shipment.related_id), Product.owner_id == owner_id)
+            .first()
+        )
         if transfer:
             affected_products.append(_product_summary(db, transfer.product_id, transfer.quantity))
 
@@ -134,11 +139,11 @@ def _is_international(shipment: Shipment) -> bool:
     return False
 
 
-def _route_shipments(db: Session, route: Route) -> list[Shipment]:
+def _route_shipments(db: Session, route: Route, *, owner_id: int) -> list[Shipment]:
     return (
         db.query(Shipment)
         .options(joinedload(Shipment.legs))
-        .filter(Shipment.origin == route.origin, Shipment.destination == route.destination)
+        .filter(Shipment.origin == route.origin, Shipment.destination == route.destination, Shipment.owner_id == owner_id)
         .all()
     )
 
@@ -159,17 +164,17 @@ def _build_mitigation(delay_days: int, affected_products: list[dict], revenue_at
     return actions
 
 
-def create_shipment(db: Session, **payload) -> Shipment:
+def create_shipment(db: Session, *, owner_id: int, **payload) -> Shipment:
     # TODO: gate advanced logistics features by subscription tier once feature flags exist.
     # TODO: when carrier APIs are configured, enrich shipment creation with upstream references here.
-    shipment = Shipment(shipment_number=_generate_shipment_number(db), status="CREATED", **payload)
+    shipment = Shipment(shipment_number=_generate_shipment_number(db, owner_id=owner_id), status="CREATED", owner_id=owner_id, **payload)
     db.add(shipment)
     db.commit()
-    return get_shipment(db, shipment.id)
+    return get_shipment(db, shipment.id, owner_id=owner_id)
 
 
-def update_shipment_status(db: Session, shipment_id: int, **payload) -> Shipment:
-    shipment = db.query(Shipment).filter(Shipment.id == shipment_id).first()
+def update_shipment_status(db: Session, shipment_id: int, *, owner_id: int, **payload) -> Shipment:
+    shipment = db.query(Shipment).filter(Shipment.id == shipment_id, Shipment.owner_id == owner_id).first()
     if shipment is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Shipment not found")
     if not payload.get("status"):
@@ -181,13 +186,13 @@ def update_shipment_status(db: Session, shipment_id: int, **payload) -> Shipment
     return (
         db.query(Shipment)
         .options(joinedload(Shipment.legs))
-        .filter(Shipment.id == shipment.id)
+        .filter(Shipment.id == shipment.id, Shipment.owner_id == owner_id)
         .first()
     )
 
 
-def add_shipment_leg(db: Session, shipment_id: int, **payload) -> Shipment:
-    shipment = db.query(Shipment).filter(Shipment.id == shipment_id).first()
+def add_shipment_leg(db: Session, shipment_id: int, *, owner_id: int, **payload) -> Shipment:
+    shipment = db.query(Shipment).filter(Shipment.id == shipment_id, Shipment.owner_id == owner_id).first()
     if shipment is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Shipment not found")
     leg = ShipmentLeg(shipment_id=shipment_id, **payload)
@@ -196,16 +201,16 @@ def add_shipment_leg(db: Session, shipment_id: int, **payload) -> Shipment:
     return (
         db.query(Shipment)
         .options(joinedload(Shipment.legs))
-        .filter(Shipment.id == shipment_id)
+        .filter(Shipment.id == shipment_id, Shipment.owner_id == owner_id)
         .first()
     )
 
 
-def get_shipment(db: Session, shipment_id: int) -> Shipment:
+def get_shipment(db: Session, shipment_id: int, *, owner_id: int) -> Shipment:
     shipment = (
         db.query(Shipment)
         .options(joinedload(Shipment.legs))
-        .filter(Shipment.id == shipment_id)
+        .filter(Shipment.id == shipment_id, Shipment.owner_id == owner_id)
         .first()
     )
     if shipment is None:
@@ -213,33 +218,33 @@ def get_shipment(db: Session, shipment_id: int) -> Shipment:
     return shipment
 
 
-def get_active_shipments(db: Session) -> list[Shipment]:
+def get_active_shipments(db: Session, *, owner_id: int) -> list[Shipment]:
     return (
         db.query(Shipment)
         .options(joinedload(Shipment.legs))
-        .filter(Shipment.status.in_(["CREATED", "IN_TRANSIT", "DELAYED", "CUSTOMS_HOLD"]))
+        .filter(Shipment.owner_id == owner_id, Shipment.status.in_(["CREATED", "IN_TRANSIT", "DELAYED", "CUSTOMS_HOLD"]))
         .order_by(Shipment.created_at.desc())
         .all()
     )
 
 
-def get_international_active_shipments(db: Session) -> list[dict]:
-    shipments = get_active_shipments(db)
-    return [serialize_shipment_status(db, shipment.id) for shipment in shipments if _is_international(shipment)]
+def get_international_active_shipments(db: Session, *, owner_id: int) -> list[dict]:
+    shipments = get_active_shipments(db, owner_id=owner_id)
+    return [serialize_shipment_status(db, shipment.id, owner_id=owner_id) for shipment in shipments if _is_international(shipment)]
 
 
-def get_delayed_shipments(db: Session) -> list[Shipment]:
+def get_delayed_shipments(db: Session, *, owner_id: int) -> list[Shipment]:
     return (
         db.query(Shipment)
         .options(joinedload(Shipment.legs))
-        .filter(Shipment.status.in_(["DELAYED", "CUSTOMS_HOLD"]))
+        .filter(Shipment.owner_id == owner_id, Shipment.status.in_(["DELAYED", "CUSTOMS_HOLD"]))
         .order_by(Shipment.updated_at.desc())
         .all()
     )
 
 
-def get_eta(db: Session, shipment_id: int) -> dict:
-    shipment = get_shipment(db, shipment_id)
+def get_eta(db: Session, shipment_id: int, *, owner_id: int) -> dict:
+    shipment = get_shipment(db, shipment_id, owner_id=owner_id)
     estimated_arrival = _normalize_dt(shipment.estimated_arrival)
     actual_arrival = _normalize_dt(shipment.actual_arrival)
     delay_days = _estimate_delay_days(shipment)
@@ -258,9 +263,9 @@ def get_eta(db: Session, shipment_id: int) -> dict:
     }
 
 
-def find_affected_orders(db: Session, shipment_id: int) -> dict:
-    shipment = get_shipment(db, shipment_id)
-    related = _resolve_related_context(db, shipment)
+def find_affected_orders(db: Session, shipment_id: int, *, owner_id: int) -> dict:
+    shipment = get_shipment(db, shipment_id, owner_id=owner_id)
+    related = _resolve_related_context(db, shipment, owner_id=owner_id)
     return {
         "shipment_id": shipment.id,
         "shipment_number": shipment.shipment_number,
@@ -271,10 +276,10 @@ def find_affected_orders(db: Session, shipment_id: int) -> dict:
     }
 
 
-def calculate_delay_impact(db: Session, shipment_id: int) -> dict:
-    shipment = get_shipment(db, shipment_id)
+def calculate_delay_impact(db: Session, shipment_id: int, *, owner_id: int) -> dict:
+    shipment = get_shipment(db, shipment_id, owner_id=owner_id)
     delay_days = _estimate_delay_days(shipment)
-    related = _resolve_related_context(db, shipment)
+    related = _resolve_related_context(db, shipment, owner_id=owner_id)
     risk_level = "LOW"
     if delay_days >= 7 or shipment.status == "CUSTOMS_HOLD":
         risk_level = "HIGH"
@@ -307,26 +312,26 @@ def calculate_delay_impact(db: Session, shipment_id: int) -> dict:
     }
 
 
-def detect_late_shipments(db: Session, threshold_days: int = 1) -> list[dict]:
+def detect_late_shipments(db: Session, threshold_days: int = 1, *, owner_id: int) -> list[dict]:
     delayed: list[dict] = []
-    for shipment in get_active_shipments(db):
+    for shipment in get_active_shipments(db, owner_id=owner_id):
         delay_days = _estimate_delay_days(shipment)
         if delay_days >= threshold_days:
-            delayed.append(serialize_shipment_status(db, shipment.id))
+            delayed.append(serialize_shipment_status(db, shipment.id, owner_id=owner_id))
     delayed.sort(key=lambda item: item["delay_days"], reverse=True)
     return delayed
 
 
-def get_route(db: Session, route_id: int) -> Route:
-    route = db.query(Route).filter(Route.id == route_id).first()
+def get_route(db: Session, route_id: int, *, owner_id: int) -> Route:
+    route = db.query(Route).filter(Route.id == route_id, Route.owner_id == owner_id).first()
     if route is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Route not found")
     return route
 
 
-def get_route_status(db: Session, route_id: int) -> dict:
-    route = get_route(db, route_id)
-    shipments = _route_shipments(db, route)
+def get_route_status(db: Session, route_id: int, *, owner_id: int) -> dict:
+    route = get_route(db, route_id, owner_id=owner_id)
+    shipments = _route_shipments(db, route, owner_id=owner_id)
     active_shipments = [shipment for shipment in shipments if shipment.status in {"CREATED", "IN_TRANSIT", "DELAYED", "CUSTOMS_HOLD"}]
     delayed_shipments = [shipment for shipment in active_shipments if _estimate_delay_days(shipment) > 0 or shipment.status in {"DELAYED", "CUSTOMS_HOLD"}]
     average_delay = None
@@ -348,16 +353,16 @@ def get_route_status(db: Session, route_id: int) -> dict:
     }
 
 
-def get_route_delays(db: Session) -> list[dict]:
-    return [get_route_status(db, route.id) for route in list_routes(db)]
+def get_route_delays(db: Session, *, owner_id: int) -> list[dict]:
+    return [get_route_status(db, route.id, owner_id=owner_id) for route in list_routes(db, owner_id=owner_id)]
 
 
-def recommend_reroute(db: Session, shipment_id: int) -> dict:
-    shipment = get_shipment(db, shipment_id)
-    delay_impact = calculate_delay_impact(db, shipment_id)
+def recommend_reroute(db: Session, shipment_id: int, *, owner_id: int) -> dict:
+    shipment = get_shipment(db, shipment_id, owner_id=owner_id)
+    delay_impact = calculate_delay_impact(db, shipment_id, owner_id=owner_id)
     candidate_routes = (
         db.query(Route)
-        .filter(Route.origin == shipment.origin, Route.destination == shipment.destination)
+        .filter(Route.origin == shipment.origin, Route.destination == shipment.destination, Route.owner_id == owner_id)
         .order_by(Route.risk_level.asc(), Route.average_transit_days.asc())
         .all()
     )
@@ -397,13 +402,14 @@ def recommend_reroute(db: Session, shipment_id: int) -> dict:
 def create_logistics_exception(
     db: Session,
     *,
+    owner_id: int,
     shipment_id: int,
     issue_summary: Optional[str] = None,
 ) -> dict:
     # TODO: when carrier integrations exist, attach live carrier references to exception records.
-    shipment = get_shipment(db, shipment_id)
-    delay_impact = calculate_delay_impact(db, shipment_id)
-    reroute = recommend_reroute(db, shipment_id)
+    shipment = get_shipment(db, shipment_id, owner_id=owner_id)
+    delay_impact = calculate_delay_impact(db, shipment_id, owner_id=owner_id)
+    reroute = recommend_reroute(db, shipment_id, owner_id=owner_id)
     return {
         "exception_type": "LOGISTICS_EXCEPTION",
         "status": "OPEN_RECOMMENDATION",
@@ -424,10 +430,10 @@ def create_logistics_exception(
     }
 
 
-def serialize_shipment_status(db: Session, shipment_id: int) -> dict:
-    shipment = get_shipment(db, shipment_id)
-    eta = get_eta(db, shipment_id)
-    related = _resolve_related_context(db, shipment)
+def serialize_shipment_status(db: Session, shipment_id: int, *, owner_id: int) -> dict:
+    shipment = get_shipment(db, shipment_id, owner_id=owner_id)
+    eta = get_eta(db, shipment_id, owner_id=owner_id)
+    related = _resolve_related_context(db, shipment, owner_id=owner_id)
     return {
         "shipment_id": shipment.id,
         "shipment_number": shipment.shipment_number,
@@ -460,26 +466,26 @@ def serialize_shipment_status(db: Session, shipment_id: int) -> dict:
     }
 
 
-def create_route(db: Session, **payload) -> Route:
-    route = Route(**payload)
+def create_route(db: Session, *, owner_id: int, **payload) -> Route:
+    route = Route(owner_id=owner_id, **payload)
     db.add(route)
     db.commit()
     db.refresh(route)
     return route
 
 
-def list_routes(db: Session) -> list[Route]:
-    return db.query(Route).order_by(Route.name.asc()).all()
+def list_routes(db: Session, *, owner_id: int) -> list[Route]:
+    return db.query(Route).filter(Route.owner_id == owner_id).order_by(Route.name.asc()).all()
 
 
-def create_port_or_node(db: Session, **payload) -> PortOrNode:
+def create_port_or_node(db: Session, *, owner_id: int, **payload) -> PortOrNode:
     # TODO: integrate external maps or carrier network metadata if needed later.
-    node = PortOrNode(**payload)
+    node = PortOrNode(owner_id=owner_id, **payload)
     db.add(node)
     db.commit()
     db.refresh(node)
     return node
 
 
-def list_ports_or_nodes(db: Session) -> list[PortOrNode]:
-    return db.query(PortOrNode).order_by(PortOrNode.name.asc()).all()
+def list_ports_or_nodes(db: Session, *, owner_id: int) -> list[PortOrNode]:
+    return db.query(PortOrNode).filter(PortOrNode.owner_id == owner_id).order_by(PortOrNode.name.asc()).all()

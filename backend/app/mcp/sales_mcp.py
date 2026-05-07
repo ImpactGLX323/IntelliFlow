@@ -12,24 +12,25 @@ from app.services import analytics_service, sales_service
 
 def _resource_weekly(db, context: MCPRequestContext, payload: dict) -> dict:
     weeks = int(payload.get("weeks", 8))
-    return analytics_service.get_weekly_sales(db=db, weeks=weeks)
+    return analytics_service.get_weekly_sales(db=db, owner_id=int(context.user_id), weeks=weeks)
 
 
 def _resource_sku_weekly(db, context: MCPRequestContext, payload: dict) -> dict:
     weeks = int(payload.get("weeks", 8))
-    return analytics_service.get_weekly_sales(db=db, sku=payload["sku"], weeks=weeks)
+    return analytics_service.get_weekly_sales(db=db, owner_id=int(context.user_id), sku=payload["sku"], weeks=weeks)
 
 
 def _resource_top_products(db, context: MCPRequestContext, payload: dict) -> dict:
     days = int(payload.get("days", 30))
     limit = int(payload.get("limit", 10))
-    return analytics_service.get_top_products(db=db, days=days, limit=limit)
+    return analytics_service.get_top_products(db=db, owner_id=int(context.user_id), days=days, limit=limit)
 
 
 def _resource_channel_performance(db, context: MCPRequestContext, payload: dict) -> dict:
     days = int(payload.get("days", 30))
     return analytics_service.get_channel_performance_resource(
         db=db,
+        owner_id=int(context.user_id),
         channel=payload["channel"],
         days=days,
     )
@@ -41,17 +42,18 @@ def _tool_get_best_selling_products(db, context: MCPRequestContext, payload: dic
     return {
         "days": days,
         "limit": limit,
-        "products": analytics_service.get_best_selling_products(db=db, days=days, limit=limit),
+        "products": analytics_service.get_best_selling_products(db=db, owner_id=int(context.user_id), days=days, limit=limit),
     }
 
 
 def _tool_calculate_sales_velocity(db, context: MCPRequestContext, payload: dict) -> dict:
     product_id = payload.get("product_id")
     if product_id is None and "sku" in payload:
-        product = sales_service.get_product_by_sku(db, payload["sku"])
+        product = sales_service.get_product_by_sku(db, payload["sku"], owner_id=int(context.user_id))
         product_id = product.id
     return analytics_service.calculate_sales_velocity(
         db=db,
+        owner_id=int(context.user_id),
         product_id=int(product_id),
         days=int(payload.get("days", 30)),
     )
@@ -60,10 +62,11 @@ def _tool_calculate_sales_velocity(db, context: MCPRequestContext, payload: dict
 def _tool_detect_sales_anomaly(db, context: MCPRequestContext, payload: dict) -> dict:
     product_id = payload.get("product_id")
     if product_id is None and "sku" in payload:
-        product = sales_service.get_product_by_sku(db, payload["sku"])
+        product = sales_service.get_product_by_sku(db, payload["sku"], owner_id=int(context.user_id))
         product_id = product.id
     return analytics_service.detect_sales_anomaly(
         db=db,
+        owner_id=int(context.user_id),
         product_id=int(product_id),
         days=int(payload.get("days", 7)),
         threshold_ratio=float(payload.get("threshold_ratio", 0.5)),
@@ -73,6 +76,7 @@ def _tool_detect_sales_anomaly(db, context: MCPRequestContext, payload: dict) ->
 def _tool_compare_sales_by_channel(db, context: MCPRequestContext, payload: dict) -> dict:
     return analytics_service.compare_sales_by_channel(
         db=db,
+        owner_id=int(context.user_id),
         days=int(payload.get("days", 30)),
         channel=payload.get("channel"),
     )
@@ -81,10 +85,11 @@ def _tool_compare_sales_by_channel(db, context: MCPRequestContext, payload: dict
 def _tool_calculate_product_margin(db, context: MCPRequestContext, payload: dict) -> dict:
     product_id = payload.get("product_id")
     if product_id is None and "sku" in payload:
-        product = sales_service.get_product_by_sku(db, payload["sku"])
+        product = sales_service.get_product_by_sku(db, payload["sku"], owner_id=int(context.user_id))
         product_id = product.id
     return analytics_service.calculate_product_margin(
         db=db,
+        owner_id=int(context.user_id),
         product_id=int(product_id),
     )
 

@@ -57,8 +57,8 @@ def _product_discount_metrics() -> dict:
     }
 
 
-def get_inventory_risk_snapshot(*, db: Session) -> list[dict]:
-    products = db.query(Product).all()
+def get_inventory_risk_snapshot(*, db: Session, owner_id: int) -> list[dict]:
+    products = db.query(Product).filter(Product.owner_id == owner_id).all()
     snapshot: list[dict] = []
     for product in products:
         available = get_available(db, product.id)
@@ -74,7 +74,7 @@ def get_inventory_risk_snapshot(*, db: Session) -> list[dict]:
     return snapshot
 
 
-def get_sales_summary(*, db: Session, days: int = 30, limit: int = 10) -> list[dict]:
+def get_sales_summary(*, db: Session, owner_id: int, days: int = 30, limit: int = 10) -> list[dict]:
     start_date = datetime.utcnow() - timedelta(days=days)
     rows = (
         db.query(
@@ -85,7 +85,7 @@ def get_sales_summary(*, db: Session, days: int = 30, limit: int = 10) -> list[d
             func.count(Sale.id).label("total_sales"),
         )
         .join(Product)
-        .filter(Sale.sale_date >= start_date)
+        .filter(Sale.sale_date >= start_date, Sale.owner_id == owner_id)
         .group_by(Sale.product_id, Product.name)
         .order_by(desc("total_revenue"))
         .limit(limit)
@@ -106,6 +106,7 @@ def get_sales_summary(*, db: Session, days: int = 30, limit: int = 10) -> list[d
 def calculate_sales_velocity(
     *,
     db: Session,
+    owner_id: int,
     product_id: int,
     days: int = 30,
 ) -> dict:
@@ -115,12 +116,12 @@ def calculate_sales_velocity(
     start_date = end_date - timedelta(days=days)
     previous_start = start_date - timedelta(days=days)
 
-    product = db.query(Product).filter(Product.id == product_id).first()
+    product = db.query(Product).filter(Product.id == product_id, Product.owner_id == owner_id).first()
     if product is None:
         raise ValueError("product not found")
 
-    current_sales = sales_service.list_sales(db, product_id=product_id, start_date=start_date, end_date=end_date)
-    previous_sales = sales_service.list_sales(db, product_id=product_id, start_date=previous_start, end_date=start_date)
+    current_sales = sales_service.list_sales(db, owner_id=owner_id, product_id=product_id, start_date=start_date, end_date=end_date)
+    previous_sales = sales_service.list_sales(db, owner_id=owner_id, product_id=product_id, start_date=previous_start, end_date=start_date)
 
     current_units = sum(sale.quantity for sale in current_sales)
     previous_units = sum(sale.quantity for sale in previous_sales)
@@ -144,17 +145,18 @@ def calculate_sales_velocity(
 def calculate_product_margin(
     *,
     db: Session,
+    owner_id: int,
     product_id: int,
     start_date: Optional[datetime] = None,
     end_date: Optional[datetime] = None,
 ) -> dict:
     end = end_date or datetime.utcnow()
     start = start_date or (end - timedelta(days=30))
-    product = db.query(Product).filter(Product.id == product_id).first()
+    product = db.query(Product).filter(Product.id == product_id, Product.owner_id == owner_id).first()
     if product is None:
         raise ValueError("product not found")
 
-    sales = sales_service.list_sales(db, product_id=product_id, start_date=start, end_date=end)
+    sales = sales_service.list_sales(db, owner_id=owner_id, product_id=product_id, start_date=start, end_date=end)
     units_sold = sum(sale.quantity for sale in sales)
     revenue = float(sum(sale.total_amount for sale in sales))
     cost_of_goods = float(sum((product.cost or 0.0) * sale.quantity for sale in sales))
@@ -185,6 +187,7 @@ def calculate_product_margin(
 def get_best_selling_products(
     *,
     db: Session,
+    owner_id: int,
     days: int = 30,
     limit: int = 10,
 ) -> list[dict]:
@@ -192,12 +195,13 @@ def get_best_selling_products(
     start_date = end_date - timedelta(days=days)
     rows = (
         db.query(Product)
+        .filter(Product.owner_id == owner_id)
         .order_by(Product.name.asc())
         .all()
     )
     ranked: list[dict] = []
     for product in rows:
-        sales = sales_service.list_sales(db, product_id=product.id, start_date=start_date, end_date=end_date)
+        sales = sales_service.list_sales(db, owner_id=owner_id, product_id=product.id, start_date=start_date, end_date=end_date)
         if not sales:
             continue
         units_sold = sum(sale.quantity for sale in sales)
@@ -211,7 +215,7 @@ def get_best_selling_products(
             end_date=end_date,
             units_sold=units_sold,
         )
-        velocity_data = calculate_sales_velocity(db=db, product_id=product.id, days=days)
+        velocity_data = calculate_sales_velocity(db=db, owner_id=owner_id, product_id=product.id, days=days)
 
         channels: dict[str, dict[str, float]] = defaultdict(lambda: {"units_sold": 0, "revenue": 0.0})
         missing_data: set[str] = set()
@@ -257,13 +261,14 @@ def get_best_selling_products(
 def detect_sales_anomaly(
     *,
     db: Session,
+    owner_id: int,
     product_id: int,
     days: int = 7,
     threshold_ratio: float = 0.5,
 ) -> dict:
     if days <= 0:
         raise ValueError("days must be greater than zero")
-    velocity = calculate_sales_velocity(db=db, product_id=product_id, days=days)
+    velocity = calculate_sales_velocity(db=db, owner_id=owner_id, product_id=product_id, days=days)
     current_velocity = velocity["sales_velocity"]
     previous_velocity = velocity["previous_sales_velocity"]
     delta = current_velocity - previous_velocity
@@ -292,12 +297,13 @@ def detect_sales_anomaly(
 def compare_sales_by_channel(
     *,
     db: Session,
+    owner_id: int,
     days: int = 30,
     channel: Optional[str] = None,
 ) -> dict:
     end_date = datetime.utcnow()
     start_date = end_date - timedelta(days=days)
-    sales = sales_service.list_sales(db, start_date=start_date, end_date=end_date)
+    sales = sales_service.list_sales(db, owner_id=owner_id, start_date=start_date, end_date=end_date)
 
     performance: dict[str, dict[str, float | int | list[str]]] = defaultdict(
         lambda: {
@@ -310,7 +316,7 @@ def compare_sales_by_channel(
     )
 
     for sale in sales:
-        product = db.query(Product).filter(Product.id == sale.product_id).first()
+        product = db.query(Product).filter(Product.id == sale.product_id, Product.owner_id == owner_id).first()
         channel_name, missing = _parse_channel_from_sale(sale)
         if channel is not None and channel_name != channel:
             continue
@@ -344,6 +350,7 @@ def compare_sales_by_channel(
 def get_weekly_sales(
     *,
     db: Session,
+    owner_id: int,
     sku: Optional[str] = None,
     weeks: int = 8,
 ) -> dict:
@@ -351,13 +358,13 @@ def get_weekly_sales(
         raise ValueError("weeks must be greater than zero")
     end_date = datetime.utcnow()
     start_date = end_date - timedelta(days=weeks * 7)
-    product = sales_service.get_product_by_sku(db, sku) if sku else None
-    sales = sales_service.list_sales(db, product_id=product.id if product else None, start_date=start_date, end_date=end_date)
+    product = sales_service.get_product_by_sku(db, sku, owner_id=owner_id) if sku else None
+    sales = sales_service.list_sales(db, owner_id=owner_id, product_id=product.id if product else None, start_date=start_date, end_date=end_date)
 
     buckets: dict[str, dict[str, float | int]] = defaultdict(lambda: {"units_sold": 0, "revenue": 0.0, "gross_margin": 0.0})
     for sale in sales:
         bucket = f"{sale.sale_date.isocalendar().year}-W{sale.sale_date.isocalendar().week:02d}"
-        product_row = product if product is not None else db.query(Product).filter(Product.id == sale.product_id).first()
+        product_row = product if product is not None else db.query(Product).filter(Product.id == sale.product_id, Product.owner_id == owner_id).first()
         cost = (product_row.cost if product_row else 0.0) or 0.0
         buckets[bucket]["units_sold"] += sale.quantity
         buckets[bucket]["revenue"] += sale.total_amount
@@ -382,19 +389,21 @@ def get_weekly_sales(
 def get_top_products(
     *,
     db: Session,
+    owner_id: int,
     days: int = 30,
     limit: int = 10,
 ) -> dict:
     return {
         "days": days,
-        "products": get_best_selling_products(db=db, days=days, limit=limit),
+        "products": get_best_selling_products(db=db, owner_id=owner_id, days=days, limit=limit),
     }
 
 
 def get_channel_performance_resource(
     *,
     db: Session,
+    owner_id: int,
     channel: str,
     days: int = 30,
 ) -> dict:
-    return compare_sales_by_channel(db=db, days=days, channel=channel)
+    return compare_sales_by_channel(db=db, owner_id=owner_id, days=days, channel=channel)

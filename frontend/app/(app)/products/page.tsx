@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { productsAPI } from '@/lib/api'
+import { formatCurrency } from '@/lib/utils/format'
 import type { Product } from '@/types/product'
 
 const initialForm = {
@@ -196,7 +197,7 @@ export default function ProductsPage() {
                   <td className="px-6 py-5 font-lexend text-white/64">{product.sku}</td>
                   <td className="px-6 py-5 font-lexend text-white/64">{product.category || '-'}</td>
                   <td className="px-6 py-5 font-lexend text-white/64">{product.supplier || '-'}</td>
-                  <td className="px-6 py-5 font-montserrat text-white">${product.price.toFixed(2)}</td>
+                  <td className="px-6 py-5 font-montserrat text-white">{formatCurrency(product.price)}</td>
                   <td className="px-6 py-5 font-montserrat text-white">{product.current_stock}</td>
                   <td className="px-6 py-5">
                     {product.current_stock <= product.min_stock_threshold ? (

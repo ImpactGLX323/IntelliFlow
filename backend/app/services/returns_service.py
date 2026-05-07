@@ -13,16 +13,16 @@ from app.models import Product, ReturnOrder, ReturnOrderItem, Sale
 from app.services.stock_ledger_service import create_inventory_transaction, record_damaged_stock, record_quarantined_stock
 
 
-def _generate_return_number(db: Session) -> str:
-    count = db.query(ReturnOrder).count() + 1
+def _generate_return_number(db: Session, *, owner_id: int) -> str:
+    count = db.query(ReturnOrder).filter(ReturnOrder.owner_id == owner_id).count() + 1
     return f"RTN-{datetime.utcnow().strftime('%Y%m%d')}-{count:04d}"
 
 
-def _load_return_order(db: Session, return_order_id: int) -> ReturnOrder:
+def _load_return_order(db: Session, return_order_id: int, *, owner_id: int) -> ReturnOrder:
     return_order = (
         db.query(ReturnOrder)
         .options(joinedload(ReturnOrder.items))
-        .filter(ReturnOrder.id == return_order_id)
+        .filter(ReturnOrder.id == return_order_id, ReturnOrder.owner_id == owner_id)
         .first()
     )
     if return_order is None:
@@ -30,15 +30,15 @@ def _load_return_order(db: Session, return_order_id: int) -> ReturnOrder:
     return return_order
 
 
-def _get_product_by_sku(db: Session, sku: str) -> Product:
-    product = db.query(Product).filter(Product.sku == sku).first()
+def _get_product_by_sku(db: Session, sku: str, *, owner_id: int) -> Product:
+    product = db.query(Product).filter(Product.sku == sku, Product.owner_id == owner_id).first()
     if product is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Product not found")
     return product
 
 
-def get_product_by_sku(db: Session, sku: str) -> Product:
-    return _get_product_by_sku(db, sku)
+def get_product_by_sku(db: Session, sku: str, *, owner_id: int) -> Product:
+    return _get_product_by_sku(db, sku, owner_id=owner_id)
 
 
 def _get_return_items_for_product(
@@ -89,6 +89,7 @@ def _confidence_level(missing_data: list[str]) -> str:
 def create_return_order(
     db: Session,
     *,
+    owner_id: int,
     sales_order_id: int | None,
     customer_id: int | None,
     items: list[dict],
@@ -99,9 +100,10 @@ def create_return_order(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Return order must include at least one item")
 
     return_order = ReturnOrder(
-        return_number=_generate_return_number(db),
+        return_number=_generate_return_number(db, owner_id=owner_id),
         sales_order_id=sales_order_id,
         customer_id=customer_id,
+        owner_id=owner_id,
         status="REQUESTED",
         return_date=return_date or datetime.utcnow(),
         notes=notes,
@@ -110,28 +112,28 @@ def create_return_order(
     db.flush()
 
     for item_data in items:
-        product = db.query(Product).filter(Product.id == item_data["product_id"]).first()
+        product = db.query(Product).filter(Product.id == item_data["product_id"], Product.owner_id == owner_id).first()
         if product is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Product {item_data['product_id']} not found")
         return_item = ReturnOrderItem(return_order_id=return_order.id, **item_data)
         db.add(return_item)
 
     db.commit()
-    return _load_return_order(db, return_order.id)
+    return _load_return_order(db, return_order.id, owner_id=owner_id)
 
 
-def approve_return_order(db: Session, return_order_id: int) -> ReturnOrder:
-    return_order = _load_return_order(db, return_order_id)
+def approve_return_order(db: Session, return_order_id: int, *, owner_id: int) -> ReturnOrder:
+    return_order = _load_return_order(db, return_order_id, owner_id=owner_id)
     if return_order.status != "REQUESTED":
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Return order is not awaiting approval")
     return_order.status = "APPROVED"
     db.add(return_order)
     db.commit()
-    return _load_return_order(db, return_order.id)
+    return _load_return_order(db, return_order.id, owner_id=owner_id)
 
 
-def receive_return_item(db: Session, *, return_id: int, item_id: int, quantity: int) -> ReturnOrder:
-    return_order = _load_return_order(db, return_id)
+def receive_return_item(db: Session, *, owner_id: int, return_id: int, item_id: int, quantity: int) -> ReturnOrder:
+    return_order = _load_return_order(db, return_id, owner_id=owner_id)
     if return_order.status not in {"APPROVED", "RECEIVED"}:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Return order cannot receive items in current status")
     item = next((row for row in return_order.items if row.id == item_id), None)
@@ -183,11 +185,11 @@ def receive_return_item(db: Session, *, return_id: int, item_id: int, quantity: 
     return_order.replacement_cost = sum(return_item.replacement_cost for return_item in return_order.items)
     db.add(return_order)
     db.commit()
-    return _load_return_order(db, return_order.id)
+    return _load_return_order(db, return_order.id, owner_id=owner_id)
 
 
-def mark_refunded(db: Session, *, return_order_id: int, refund_amount: float | None = None) -> ReturnOrder:
-    return_order = _load_return_order(db, return_order_id)
+def mark_refunded(db: Session, *, owner_id: int, return_order_id: int, refund_amount: float | None = None) -> ReturnOrder:
+    return_order = _load_return_order(db, return_order_id, owner_id=owner_id)
     return_order.status = "REFUNDED"
     if refund_amount is not None:
         return_order.refund_amount = refund_amount
@@ -196,7 +198,7 @@ def mark_refunded(db: Session, *, return_order_id: int, refund_amount: float | N
     return_order.replacement_cost = sum(item.replacement_cost for item in return_order.items)
     db.add(return_order)
     db.commit()
-    return _load_return_order(db, return_order.id)
+    return _load_return_order(db, return_order.id, owner_id=owner_id)
 
 
 def calculate_return_adjusted_margin(db: Session, product_id: int, start_date: datetime, end_date: datetime) -> dict:
@@ -517,7 +519,7 @@ def create_quality_investigation(
     }
 
 
-def get_high_return_products(db: Session, start_date: datetime, end_date: datetime) -> list[dict]:
+def get_high_return_products(db: Session, start_date: datetime, end_date: datetime, *, owner_id: int) -> list[dict]:
     rows = (
         db.query(
             ReturnOrderItem.product_id,
@@ -526,14 +528,14 @@ def get_high_return_products(db: Session, start_date: datetime, end_date: dateti
             func.coalesce(func.sum(ReturnOrderItem.replacement_cost), 0.0).label("replacement_cost"),
         )
         .join(ReturnOrder, ReturnOrder.id == ReturnOrderItem.return_order_id)
-        .filter(ReturnOrder.return_date >= start_date, ReturnOrder.return_date <= end_date)
+        .filter(ReturnOrder.return_date >= start_date, ReturnOrder.return_date <= end_date, ReturnOrder.owner_id == owner_id)
         .group_by(ReturnOrderItem.product_id)
         .order_by(func.sum(ReturnOrderItem.quantity).desc())
         .all()
     )
     results = []
     for row in rows:
-        product = db.query(Product).filter(Product.id == row.product_id).first()
+        product = db.query(Product).filter(Product.id == row.product_id, Product.owner_id == owner_id).first()
         rate_data = get_return_rate(db, product_id=row.product_id, start_date=start_date, end_date=end_date)
         results.append(
             {
@@ -553,6 +555,7 @@ def get_high_return_products(db: Session, start_date: datetime, end_date: dateti
 def get_weekly_returns(
     db: Session,
     *,
+    owner_id: int,
     product_id: Optional[int] = None,
     weeks: int = 8,
 ) -> dict:
@@ -563,6 +566,7 @@ def get_weekly_returns(
     query = db.query(ReturnOrderItem).join(ReturnOrder, ReturnOrder.id == ReturnOrderItem.return_order_id).filter(
         ReturnOrder.return_date >= start_date,
         ReturnOrder.return_date <= end_date,
+        ReturnOrder.owner_id == owner_id,
     )
     if product_id is not None:
         query = query.filter(ReturnOrderItem.product_id == product_id)
@@ -579,7 +583,7 @@ def get_weekly_returns(
         buckets[bucket]["returned_quantity"] += item.quantity
         buckets[bucket]["refund_cost"] += item.refund_amount or 0.0
         buckets[bucket]["replacement_cost"] += item.replacement_cost or 0.0
-    product = db.query(Product).filter(Product.id == product_id).first() if product_id is not None else None
+    product = db.query(Product).filter(Product.id == product_id, Product.owner_id == owner_id).first() if product_id is not None else None
     return {
         "product_id": product_id,
         "sku": product.sku if product else None,
@@ -595,11 +599,11 @@ def get_weekly_returns(
     }
 
 
-def get_profit_leakage_report(db: Session, start_date: datetime, end_date: datetime) -> dict:
+def get_profit_leakage_report(db: Session, start_date: datetime, end_date: datetime, *, owner_id: int) -> dict:
     by_product = []
     total_refunds = 0.0
     total_replacements = 0.0
-    for row in get_high_return_products(db, start_date, end_date):
+    for row in get_high_return_products(db, start_date, end_date, owner_id=owner_id):
         leakage = row["refund_amount"] + row["replacement_cost"]
         total_refunds += row["refund_amount"]
         total_replacements += row["replacement_cost"]
@@ -621,9 +625,9 @@ def get_profit_leakage_report(db: Session, start_date: datetime, end_date: datet
     }
 
 
-def get_return_order(db: Session, return_order_id: int) -> ReturnOrder:
-    return _load_return_order(db, return_order_id)
+def get_return_order(db: Session, return_order_id: int, *, owner_id: int) -> ReturnOrder:
+    return _load_return_order(db, return_order_id, owner_id=owner_id)
 
 
-def list_return_orders(db: Session) -> list[ReturnOrder]:
-    return db.query(ReturnOrder).options(joinedload(ReturnOrder.items)).order_by(ReturnOrder.created_at.desc()).all()
+def list_return_orders(db: Session, *, owner_id: int) -> list[ReturnOrder]:
+    return db.query(ReturnOrder).options(joinedload(ReturnOrder.items)).filter(ReturnOrder.owner_id == owner_id).order_by(ReturnOrder.created_at.desc()).all()

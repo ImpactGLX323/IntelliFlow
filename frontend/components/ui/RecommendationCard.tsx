@@ -23,7 +23,7 @@ function InlineList({ label, items }: { label: string; items: string[] }) {
       <p className="font-montserrat text-[10px] uppercase tracking-[0.16em] text-white/34">{label}</p>
       <div className="mt-2 flex flex-wrap gap-2">
         {items.map((item) => (
-          <span key={`${label}-${item}`} className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-xs text-white/72">
+          <span key={`${label}-${item}`} className="max-w-full break-all rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-xs text-white/72">
             {item}
           </span>
         ))}

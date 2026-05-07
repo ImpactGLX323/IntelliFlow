@@ -14,6 +14,16 @@ export interface InventoryTransaction {
   created_at: string
 }
 
+export interface Warehouse {
+  id: number
+  name: string
+  code: string
+  address: string | null
+  is_active: boolean
+  created_at: string
+  updated_at: string | null
+}
+
 export interface StockPosition {
   product_id: number
   warehouse_id: number | null

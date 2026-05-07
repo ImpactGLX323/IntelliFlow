@@ -41,15 +41,18 @@ RESERVATION_OPEN_STATUSES = {"ACTIVE", "RELEASED", "CONSUMED", "CANCELLED"}
 TRANSFER_STATUSES = {"DRAFT", "IN_TRANSIT", "RECEIVED", "CANCELLED"}
 
 
-def _get_product_by_sku(db: Session, sku: str) -> Product:
-    product = db.query(Product).filter(Product.sku == sku).first()
+def _get_product_by_sku(db: Session, sku: str, *, owner_id: Optional[int] = None) -> Product:
+    query = db.query(Product).filter(Product.sku == sku)
+    if owner_id is not None:
+        query = query.filter(Product.owner_id == owner_id)
+    product = query.first()
     if product is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Product not found")
     return product
 
 
-def get_product_by_sku(db: Session, sku: str) -> Product:
-    return _get_product_by_sku(db, sku)
+def get_product_by_sku(db: Session, sku: str, *, owner_id: Optional[int] = None) -> Product:
+    return _get_product_by_sku(db, sku, owner_id=owner_id)
 
 
 def _apply_inventory_filters(query, product_id: int, warehouse_id: Optional[int] = None):
@@ -59,10 +62,13 @@ def _apply_inventory_filters(query, product_id: int, warehouse_id: Optional[int]
     return query
 
 
-def get_default_warehouse(db: Session) -> Warehouse:
-    warehouse = db.query(Warehouse).filter(Warehouse.code == DEFAULT_WAREHOUSE_CODE).first()
+def get_default_warehouse(db: Session, *, owner_id: Optional[int] = None) -> Warehouse:
+    query = db.query(Warehouse).filter(Warehouse.code == DEFAULT_WAREHOUSE_CODE)
+    if owner_id is not None:
+        query = query.filter(Warehouse.owner_id == owner_id)
+    warehouse = query.first()
     if warehouse is None:
-        warehouse = Warehouse(name=DEFAULT_WAREHOUSE_NAME, code=DEFAULT_WAREHOUSE_CODE)
+        warehouse = Warehouse(name=DEFAULT_WAREHOUSE_NAME, code=DEFAULT_WAREHOUSE_CODE, owner_id=owner_id)
         db.add(warehouse)
         db.commit()
         db.refresh(warehouse)
@@ -164,8 +170,8 @@ def get_stock_position(db: Session, product_id: int, warehouse_id: Optional[int]
     }
 
 
-def get_stock_position_by_sku(db: Session, sku: str, warehouse_id: Optional[int] = None) -> dict:
-    product = _get_product_by_sku(db, sku)
+def get_stock_position_by_sku(db: Session, sku: str, warehouse_id: Optional[int] = None, *, owner_id: Optional[int] = None) -> dict:
+    product = _get_product_by_sku(db, sku, owner_id=owner_id)
     stock_position = get_stock_position(db, product.id, warehouse_id)
     stock_position["sku"] = product.sku
     stock_position["product_name"] = product.name
@@ -178,9 +184,12 @@ def get_available_to_promise(db: Session, product_id: int, warehouse_id: Optiona
     return stock_position
 
 
-def get_low_stock_items(db: Session, warehouse_id: Optional[int] = None) -> list[dict]:
+def get_low_stock_items(db: Session, warehouse_id: Optional[int] = None, *, owner_id: Optional[int] = None) -> list[dict]:
     low_stock_items: list[dict] = []
-    for product in db.query(Product).order_by(Product.name.asc()).all():
+    query = db.query(Product)
+    if owner_id is not None:
+        query = query.filter(Product.owner_id == owner_id)
+    for product in query.order_by(Product.name.asc()).all():
         stock_position = get_stock_position(db, product.id, warehouse_id)
         threshold = product.min_stock_threshold or 0
         if stock_position["available"] <= threshold:
@@ -204,8 +213,10 @@ def get_stock_movements_by_sku(
     sku: str,
     warehouse_id: Optional[int] = None,
     limit: int = 100,
+    *,
+    owner_id: Optional[int] = None,
 ) -> dict:
-    product = _get_product_by_sku(db, sku)
+    product = _get_product_by_sku(db, sku, owner_id=owner_id)
     query = db.query(InventoryTransaction).filter(InventoryTransaction.product_id == product.id)
     if warehouse_id is not None:
         query = query.filter(InventoryTransaction.warehouse_id == warehouse_id)
@@ -764,7 +775,7 @@ def seed_product_stock_from_legacy_current_stock(
         sync_product_current_stock(db, product.id, commit=True)
         return None
 
-    warehouse = get_default_warehouse(db)
+    warehouse = get_default_warehouse(db, owner_id=product.owner_id)
     return create_inventory_transaction(
         db,
         product_id=product.id,

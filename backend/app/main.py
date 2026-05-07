@@ -11,9 +11,12 @@ from app.routers import (
     auth,
     customers,
     demo,
+    einvoicing,
+    free_integrations,
     ingestion,
     inventory,
     logistics,
+    notifications,
     mcp_dev,
     products,
     public_logistics,
@@ -28,9 +31,6 @@ from app.routers import (
 )
 from app.database import engine, Base
 from app.firebase_admin import init_firebase_admin
-
-# Create database tables
-Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="IntelliFlow API", version="1.0.0")
 app.state.internal_mcp = InternalMCPServer()
@@ -70,8 +70,11 @@ app.include_router(purchase_orders.router, prefix="/api/purchase-orders", tags=[
 app.include_router(reorder.router, prefix="/api", tags=["reorder"])
 app.include_router(warehouse_workflows.router, prefix="/api", tags=["warehouse-workflows"])
 app.include_router(returns.router, prefix="/api/returns", tags=["returns"])
+app.include_router(einvoicing.router, prefix="/api/einvoicing", tags=["einvoicing"])
 app.include_router(logistics.router, prefix="/api", tags=["logistics"])
+app.include_router(notifications.router, prefix="/api/notifications", tags=["notifications"])
 app.include_router(public_logistics.router, prefix="/public/logistics", tags=["public-logistics"])
+app.include_router(free_integrations.router, tags=["free-integrations"])
 app.include_router(analytics.router, prefix="/api/analytics", tags=["analytics"])
 app.include_router(ai_copilot.router, prefix="/api/ai", tags=["ai"])
 app.include_router(ai_copilot.public_router)

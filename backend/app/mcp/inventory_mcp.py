@@ -11,7 +11,7 @@ from app.services import stock_ledger_service
 
 
 def _resource_inventory_by_sku(db, context: MCPRequestContext, payload: dict) -> dict:
-    return stock_ledger_service.get_stock_position_by_sku(db, payload["sku"])
+    return stock_ledger_service.get_stock_position_by_sku(db, payload["sku"], owner_id=context.user_id)
 
 
 def _resource_inventory_by_sku_and_warehouse(db, context: MCPRequestContext, payload: dict) -> dict:
@@ -19,15 +19,16 @@ def _resource_inventory_by_sku_and_warehouse(db, context: MCPRequestContext, pay
         db,
         payload["sku"],
         int(payload["warehouse_id"]),
+        owner_id=context.user_id,
     )
 
 
 def _resource_low_stock(db, context: MCPRequestContext, payload: dict) -> list[dict]:
-    return stock_ledger_service.get_low_stock_items(db)
+    return stock_ledger_service.get_low_stock_items(db, owner_id=context.user_id)
 
 
 def _resource_stock_movements(db, context: MCPRequestContext, payload: dict) -> dict:
-    return stock_ledger_service.get_stock_movements_by_sku(db, payload["sku"])
+    return stock_ledger_service.get_stock_movements_by_sku(db, payload["sku"], owner_id=context.user_id)
 
 
 def _tool_get_stock_position(db, context: MCPRequestContext, payload: dict) -> dict:
@@ -36,6 +37,7 @@ def _tool_get_stock_position(db, context: MCPRequestContext, payload: dict) -> d
             db,
             payload["sku"],
             payload.get("warehouse_id"),
+            owner_id=context.user_id,
         )
     return stock_ledger_service.get_stock_position(
         db,
@@ -47,7 +49,7 @@ def _tool_get_stock_position(db, context: MCPRequestContext, payload: dict) -> d
 def _tool_get_available_to_promise(db, context: MCPRequestContext, payload: dict) -> dict:
     product_id = payload.get("product_id")
     if product_id is None and "sku" in payload:
-        product = stock_ledger_service.get_product_by_sku(db, payload["sku"])
+        product = stock_ledger_service.get_product_by_sku(db, payload["sku"], owner_id=context.user_id)
         product_id = product.id
     return stock_ledger_service.get_available_to_promise(
         db,
@@ -57,13 +59,13 @@ def _tool_get_available_to_promise(db, context: MCPRequestContext, payload: dict
 
 
 def _tool_get_low_stock_items(db, context: MCPRequestContext, payload: dict) -> list[dict]:
-    return stock_ledger_service.get_low_stock_items(db, payload.get("warehouse_id"))
+    return stock_ledger_service.get_low_stock_items(db, payload.get("warehouse_id"), owner_id=context.user_id)
 
 
 def _tool_calculate_days_of_cover(db, context: MCPRequestContext, payload: dict) -> dict:
     product_id = payload.get("product_id")
     if product_id is None and "sku" in payload:
-        product = stock_ledger_service.get_product_by_sku(db, payload["sku"])
+        product = stock_ledger_service.get_product_by_sku(db, payload["sku"], owner_id=context.user_id)
         product_id = product.id
     return stock_ledger_service.calculate_days_of_cover(
         db,
@@ -76,7 +78,7 @@ def _tool_calculate_days_of_cover(db, context: MCPRequestContext, payload: dict)
 def _tool_recommend_stock_transfer(db, context: MCPRequestContext, payload: dict) -> dict:
     product_id = payload.get("product_id")
     if product_id is None and "sku" in payload:
-        product = stock_ledger_service.get_product_by_sku(db, payload["sku"])
+        product = stock_ledger_service.get_product_by_sku(db, payload["sku"], owner_id=context.user_id)
         product_id = product.id
     return stock_ledger_service.recommend_stock_transfer(
         db,
@@ -88,7 +90,7 @@ def _tool_recommend_stock_transfer(db, context: MCPRequestContext, payload: dict
 def _tool_create_stock_adjustment_request(db, context: MCPRequestContext, payload: dict) -> dict:
     product_id = payload.get("product_id")
     if product_id is None and "sku" in payload:
-        product = stock_ledger_service.get_product_by_sku(db, payload["sku"])
+        product = stock_ledger_service.get_product_by_sku(db, payload["sku"], owner_id=context.user_id)
         product_id = product.id
     return stock_ledger_service.create_stock_adjustment_request(
         db,

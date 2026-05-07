@@ -9,6 +9,7 @@ import {
   StyleSheet,
   Text,
   TextInput,
+  useWindowDimensions,
   View,
 } from 'react-native';
 import {
@@ -33,6 +34,7 @@ import { getNavigationItemByRoute, navigationItems } from './navigation/navigati
 import LoadingScreen from './screens/LoadingScreen';
 import ServiceUnavailableScreen from './screens/ServiceUnavailableScreen';
 import { getAppTheme, responsiveFont, responsiveLineHeight } from './theme/theme';
+import { integrationTruthLabels, toPreviewBadgeLabel } from './types/integrations';
 
 const THEME_STORAGE_KEY = 'intelliflow-mobile-theme';
 let theme = getAppTheme('dark');
@@ -58,10 +60,10 @@ const SCREENS = [
 
 const PRIMARY_TABS = [
   { key: 'dashboard', label: 'Overview', icon: '[]' },
-  { key: 'products', label: 'Items', icon: '::' },
-  { key: 'inventory', label: 'Home', icon: '()' },
-  { key: 'logistics', label: 'Shipping', icon: '>>' },
+  { key: 'inventory', label: 'Inventory', icon: '()' },
+  { key: 'sales', label: 'Sales', icon: '$$' },
   { key: 'copilot', label: 'Copilot', icon: '**' },
+  { key: 'account', label: 'Profile', icon: '@@' },
 ];
 
 const PLANS = ['FREE', 'PREMIUM', 'BOOST'];
@@ -72,6 +74,39 @@ const COPILOT_PROMPTS = [
   'Which products are leaking profit due to returns?',
   'Any delayed shipments?',
   'What does Malaysian customs law say about import documentation?',
+];
+
+const PLAN_MATRIX = [
+  {
+    label: 'Stock position and low-stock monitoring',
+    free: true,
+    premium: true,
+    boost: true,
+  },
+  {
+    label: 'Sales and returns intelligence',
+    free: false,
+    premium: true,
+    boost: true,
+  },
+  {
+    label: 'Basic RAG compliance answers',
+    free: false,
+    premium: true,
+    boost: true,
+  },
+  {
+    label: 'Logistics control tower and port pressure',
+    free: false,
+    premium: false,
+    boost: true,
+  },
+  {
+    label: 'MCP agent recommendations',
+    free: false,
+    premium: false,
+    boost: true,
+  },
 ];
 
 function todayIso() {
@@ -100,6 +135,13 @@ function money(value) {
   return `$${num.toFixed(2)}`;
 }
 
+const INDO_PACIFIC_BOUNDS = {
+  minLat: -12,
+  maxLat: 26,
+  minLng: 82,
+  maxLng: 125,
+};
+
 function maybeNumber(value) {
   if (value === '' || value === null || value === undefined) {
     return null;
@@ -126,6 +168,15 @@ function summarizeFlow(flow) {
     lanes: features.filter((item) => item?.properties?.kind === 'shipping_lane'),
     clusters: features.filter((item) => item?.properties?.kind === 'vessel_cluster'),
   };
+}
+
+function projectFlowPoint([lng, lat], width, height) {
+  const x = ((lng - INDO_PACIFIC_BOUNDS.minLng) / (INDO_PACIFIC_BOUNDS.maxLng - INDO_PACIFIC_BOUNDS.minLng)) * width;
+  const y =
+    height -
+    ((lat - INDO_PACIFIC_BOUNDS.minLat) / (INDO_PACIFIC_BOUNDS.maxLat - INDO_PACIFIC_BOUNDS.minLat)) * height;
+
+  return { x, y };
 }
 
 function AppBackdrop() {
@@ -226,6 +277,161 @@ function MetricCard({ label, value, tone = 'default' }) {
     <View style={[styles.metricCard, tone === 'accent' && styles.metricCardAccent]}>
       <Text style={styles.metricLabel}>{label}</Text>
       <Text style={styles.metricValue}>{value}</Text>
+    </View>
+  );
+}
+
+function CapabilityDot({ enabled }) {
+  return (
+    <View style={[styles.capabilityDot, enabled ? styles.capabilityDotEnabled : styles.capabilityDotDisabled]}>
+      <Text style={[styles.capabilityDotText, enabled ? styles.capabilityDotTextEnabled : styles.capabilityDotTextDisabled]}>
+        {enabled ? '✓' : '×'}
+      </Text>
+    </View>
+  );
+}
+
+function CapabilityMatrix({ currentPlan, capabilities }) {
+  return (
+    <View style={styles.capabilityMatrix}>
+      <View style={styles.capabilityMatrixHeader}>
+        <Text style={styles.capabilityMatrixTitle}>Plan benefits</Text>
+        <Text style={styles.capabilityMatrixMeta}>Current plan: {toDisplayPlan(currentPlan || capabilities?.plan_level || 'FREE')}</Text>
+      </View>
+      <View style={styles.capabilityTable}>
+        <View style={styles.capabilityTableHeader}>
+          <Text style={[styles.capabilityTableHeaderText, styles.capabilityFeatureCell]}>Capability</Text>
+          <Text style={styles.capabilityTableHeaderText}>Free</Text>
+          <Text style={styles.capabilityTableHeaderText}>Premium</Text>
+          <Text style={styles.capabilityTableHeaderText}>Boost</Text>
+        </View>
+        {PLAN_MATRIX.map((item) => (
+          <View key={item.label} style={styles.capabilityTableRow}>
+            <Text style={[styles.capabilityRowLabel, styles.capabilityFeatureCell]}>{item.label}</Text>
+            <CapabilityDot enabled={item.free} />
+            <CapabilityDot enabled={item.premium} />
+            <CapabilityDot enabled={item.boost} />
+          </View>
+        ))}
+      </View>
+      <View style={styles.allowedDomainWrap}>
+        <Text style={styles.allowedDomainLabel}>Unlocked domains</Text>
+        <View style={styles.chipRow}>
+          {(capabilities?.allowed_domains?.length ? capabilities.allowed_domains : ['inventory']).map((domain) => (
+            <Chip key={domain} label={domain} active />
+          ))}
+        </View>
+      </View>
+    </View>
+  );
+}
+
+function ShipFlowMapPanel({ flow }) {
+  const { width } = useWindowDimensions();
+  const summary = summarizeFlow(flow);
+  const mapWidth = Math.min(width - 64, 420);
+  const mapHeight = Math.round(mapWidth * 0.72);
+  const tick = Date.now() % 1000;
+
+  const segments = summary.lanes.flatMap((lane) => {
+    const coords = lane.geometry.coordinates;
+    return coords.slice(1).map((coord, index) => {
+      const start = projectFlowPoint(coords[index], mapWidth, mapHeight);
+      const end = projectFlowPoint(coord, mapWidth, mapHeight);
+      const dx = end.x - start.x;
+      const dy = end.y - start.y;
+      return {
+        key: `${lane.properties.route_name}-${index}`,
+        left: start.x,
+        top: start.y,
+        width: Math.hypot(dx, dy),
+        angle: Math.atan2(dy, dx),
+      };
+    });
+  });
+
+  const dots = summary.lanes.map((lane, index) => {
+    const progress = ((tick / 1000) + index * 0.19) % 1;
+    const coords = lane.geometry.coordinates;
+    if (!coords.length) {
+      return null;
+    }
+    const pointIndex = Math.min(coords.length - 1, Math.floor(progress * coords.length));
+    const point = projectFlowPoint(coords[pointIndex], mapWidth, mapHeight);
+    return { key: lane.properties.route_name, ...point };
+  }).filter(Boolean);
+
+  return (
+    <View style={[styles.shipFlowMapShell, { height: mapHeight + 76 }]}>
+      <View style={[styles.shipFlowMapBoard, { width: mapWidth, height: mapHeight }]}>
+        <View style={styles.shipFlowMapGrid} />
+        <View style={styles.shipFlowMapGlowLeft} />
+        <View style={styles.shipFlowMapGlowRight} />
+        {segments.map((segment) => (
+          <View
+            key={segment.key}
+            style={[
+              styles.shipFlowSegment,
+              {
+                left: segment.left,
+                top: segment.top,
+                width: segment.width,
+                transform: [{ rotate: `${segment.angle}rad` }],
+              },
+            ]}
+          />
+        ))}
+        {summary.ports.map((feature) => {
+          const point = projectFlowPoint(feature.geometry.coordinates, mapWidth, mapHeight);
+          const status = feature.properties.pressure_status;
+          const style =
+            status === 'CRITICAL'
+              ? styles.shipFlowPortCritical
+              : status === 'HIGH'
+                ? styles.shipFlowPortHigh
+                : status === 'MEDIUM'
+                  ? styles.shipFlowPortMedium
+                  : styles.shipFlowPortLow;
+          return (
+            <View
+              key={feature.properties.port_code}
+              style={[
+                styles.shipFlowPort,
+                style,
+                {
+                  left: point.x - 7,
+                  top: point.y - 7,
+                },
+              ]}
+            />
+          );
+        })}
+        {dots.map((dot) => (
+          <View
+            key={dot.key}
+            style={[
+              styles.shipFlowDot,
+              {
+                left: dot.x - 4,
+                top: dot.y - 4,
+              },
+            ]}
+          />
+        ))}
+      </View>
+      <View style={styles.shipFlowLegend}>
+        <Text style={styles.shipFlowLegendTitle}>Legend</Text>
+        <View style={styles.shipFlowLegendRow}>
+          <View style={[styles.shipFlowLegendSwatch, styles.shipFlowPortLow]} />
+          <Text style={styles.shipFlowLegendText}>Low</Text>
+          <View style={[styles.shipFlowLegendSwatch, styles.shipFlowPortMedium]} />
+          <Text style={styles.shipFlowLegendText}>Medium</Text>
+          <View style={[styles.shipFlowLegendSwatch, styles.shipFlowPortHigh]} />
+          <Text style={styles.shipFlowLegendText}>High</Text>
+          <View style={[styles.shipFlowLegendSwatch, styles.shipFlowPortCritical]} />
+          <Text style={styles.shipFlowLegendText}>Critical</Text>
+        </View>
+      </View>
     </View>
   );
 }
@@ -566,10 +772,16 @@ function PreviewModeScreen({ onRetry }) {
   );
 }
 
-function DashboardScreen({ session }) {
+function DashboardScreen({ session, currentUser, sessionPlan }) {
   const [dashboard, setDashboard] = useState(null);
   const [recommendations, setRecommendations] = useState([]);
   const [delayed, setDelayed] = useState([]);
+  const [integrationRegistry, setIntegrationRegistry] = useState([]);
+  const [warehousePreview, setWarehousePreview] = useState([]);
+  const [demandSignals, setDemandSignals] = useState([]);
+  const [bnmRates, setBnmRates] = useState(null);
+  const [marketplaceProviders, setMarketplaceProviders] = useState([]);
+  const [marketIntelligence, setMarketIntelligence] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -577,14 +789,33 @@ function DashboardScreen({ session }) {
     setLoading(true);
     setError('');
     try {
-      const [dashboardData, recommendationData, delayedData] = await Promise.all([
+      const [dashboardData, recommendationData, delayedData, registryData, warehouseData, demandData, bnmData] = await Promise.all([
         api.getDashboard(session),
         api.getRecommendations(session, { limit: 4 }),
         api.getDelayedShipments(session).catch(() => []),
+        api.getIntegrationsRegistry(session),
+        api.getMalaysiaWarehouses(session, { source: 'seeded', limit: 4 }),
+        api.getMalaysiaDemandSignals(session, { source: 'preview' }),
+        api.getBnmRates(session, { currency: 'USD' }),
       ]);
       setDashboard(dashboardData);
       setRecommendations(recommendationData);
       setDelayed(delayedData);
+      setIntegrationRegistry(registryData?.providers || []);
+      setWarehousePreview(warehouseData?.items || []);
+      setDemandSignals(demandData?.items || []);
+      setBnmRates(bnmData);
+      if (sessionPlan !== 'FREE') {
+        const providerData = await api.getMarketplaceProviders(session).catch(() => ({ providers: [] }));
+        setMarketplaceProviders(providerData?.providers || []);
+      } else {
+        setMarketplaceProviders([]);
+      }
+      if (sessionPlan === 'BOOST') {
+        setMarketIntelligence(await api.getMarketWideBestSellers(session).catch(() => null));
+      } else {
+        setMarketIntelligence(null);
+      }
     } catch (err) {
       setError(err.message);
     } finally {
@@ -594,7 +825,7 @@ function DashboardScreen({ session }) {
 
   useEffect(() => {
     load();
-  }, [session.apiUrl, session.token]);
+  }, [session.apiUrl, session.token, sessionPlan]);
 
   if (loading) {
     return <LoadingBlock />;
@@ -602,6 +833,7 @@ function DashboardScreen({ session }) {
 
   return (
     <View style={styles.screenStack}>
+      <Panel title={`Welcome ${currentUser?.full_name || currentUser?.email?.split('@')[0] || 'to IntelliFlow'}`} subtitle="Your operational workspace is ready. Review inventory, logistics, and AI-led actions from one place." />
       <ScreenTopBar title="Overview" leftLabel="<" rightLabel=">" />
       <AppShowcaseCard
         title={delayed.length ? 'Delivery is delayed' : 'Delivery is stable'}
@@ -652,6 +884,73 @@ function DashboardScreen({ session }) {
         ) : (
           <EmptyState title="No recommendations yet" body="Scheduled jobs have not produced visible recommendations." />
         )}
+      </Panel>
+
+      <Panel title="Free integrations overview" subtitle="Public and preview Malaysia signals delivered through the backend only.">
+        <View style={styles.metricGrid}>
+          <MetricCard label="Providers" value={String(integrationRegistry.length)} />
+          <MetricCard label="Warehouses" value={String(warehousePreview.length)} tone="accent" />
+          <MetricCard label="Signals" value={String(demandSignals.length)} />
+          <MetricCard label="FX rates" value={String(bnmRates?.rates?.length || 0)} />
+        </View>
+        <View style={styles.listBlock}>
+          <Text style={styles.listItem}>• Public/preview warehouse directory</Text>
+          <Text style={styles.listItem}>• Weather and preview port-risk signals</Text>
+          <Text style={styles.listItem}>• Malaysia demand signals, not confirmed sales</Text>
+        </View>
+      </Panel>
+
+      <Panel title="Malaysia warehouse directory" subtitle={integrationTruthLabels.warehouseDirectory}>
+        {warehousePreview.length ? (
+          warehousePreview.map((item) => (
+            <View key={item.name} style={styles.rowCard}>
+              <View style={styles.rowCardMain}>
+                <Text style={styles.rowTitle}>{item.name}</Text>
+                <Text style={styles.rowBody}>{item.city || 'Unknown city'} • {item.state || 'Malaysia'}</Text>
+                <Text style={styles.rowBodyMuted}>{item.warehouse_type || 'Directory record'} • {item.source}</Text>
+              </View>
+              <Chip label={item.is_preview ? 'Preview' : 'Public'} tone={item.is_preview ? 'warning' : 'default'} />
+            </View>
+          ))
+        ) : (
+          <EmptyState title="No warehouse preview" body="Seeded directory records were not returned." />
+        )}
+      </Panel>
+
+      <Panel title="Malaysia demand signals" subtitle={integrationTruthLabels.demandSignals}>
+        {demandSignals.length ? (
+          demandSignals.map((item) => (
+            <View key={`${item.keyword_or_product}-${item.rank || 'na'}`} style={styles.rowCard}>
+              <View style={styles.rowCardMain}>
+                <Text style={styles.rowTitle}>{item.keyword_or_product}</Text>
+                <Text style={styles.rowBody}>{item.category || 'General'} • Score {item.score ?? 'N/A'}</Text>
+                <Text style={styles.rowBodyMuted}>{item.confidence} confidence • {item.data_type}</Text>
+              </View>
+              <Chip label={toPreviewBadgeLabel(item)} tone="warning" />
+            </View>
+          ))
+        ) : (
+          <EmptyState title="No demand preview" body="Demand signals will appear when preview data is available." />
+        )}
+      </Panel>
+
+      <Panel title="Premium and Boost prompts" subtitle="Locked integrations stay truthful about plan access and configuration.">
+        <View style={styles.listBlock}>
+          <Text style={styles.listItem}>
+            • Premium own-store best sellers: {sessionPlan === 'FREE'
+              ? 'Upgrade required to connect Shopee, Lazada, or TikTok Shop.'
+              : marketplaceProviders.some((provider) => provider.status !== 'not_configured')
+                ? 'Provider credentials are ready for connection stubs.'
+                : 'Marketplace connection stubs are available, but no provider is configured yet.'}
+          </Text>
+          <Text style={styles.listItem}>
+            • Boost market intelligence: {sessionPlan !== 'BOOST'
+              ? 'Upgrade required for market-wide Malaysia best-seller providers.'
+              : marketIntelligence?.status === 'not_configured'
+                ? 'Paid market-intelligence provider is not configured.'
+                : 'Backend provider status is available.'}
+          </Text>
+        </View>
       </Panel>
     </View>
   );
@@ -1900,6 +2199,7 @@ function LogisticsScreen({ session, sessionPlan }) {
   const [delayed, setDelayed] = useState([]);
   const [routes, setRoutes] = useState([]);
   const [publicFlow, setPublicFlow] = useState(null);
+  const [portRiskPreview, setPortRiskPreview] = useState(null);
   const [delayImpact, setDelayImpact] = useState(null);
   const [recommendations, setRecommendations] = useState([]);
   const [error, setError] = useState('');
@@ -1927,7 +2227,7 @@ function LogisticsScreen({ session, sessionPlan }) {
     setLoading(true);
     setError('');
     try {
-      const [shipmentData, delayedData, routeData, publicFlowData] = await Promise.all([
+      const [shipmentData, delayedData, routeData, publicFlowData, portRiskData] = await Promise.all([
         api.getShipments(session),
         api.getDelayedShipments(session),
         api.getRoutes(session),
@@ -1936,11 +2236,13 @@ function LogisticsScreen({ session, sessionPlan }) {
           include_routes: true,
           include_vessel_clusters: true,
         }),
+        api.getMalaysiaPortRiskPreview(session, { include_weather: true, include_marine: true }),
       ]);
       setShipments(shipmentData);
       setDelayed(delayedData);
       setRoutes(routeData);
       setPublicFlow(publicFlowData);
+      setPortRiskPreview(portRiskData);
       if (sessionPlan === 'BOOST') {
         setRecommendations(await api.getRecommendations(session, { domain: 'logistics', limit: 6 }));
       } else {
@@ -2073,6 +2375,7 @@ function LogisticsScreen({ session, sessionPlan }) {
       >
         {publicFlow ? (
           <>
+            <ShipFlowMapPanel flow={publicFlow} />
             <View style={styles.metricGrid}>
               <MetricCard label="MY ports" value={String(publicFlow.summary?.malaysian_ports_monitored || 0)} tone="accent" />
               <MetricCard label="Corridors" value={String(publicFlow.summary?.routes_monitored || 0)} />
@@ -2109,6 +2412,29 @@ function LogisticsScreen({ session, sessionPlan }) {
           </>
         ) : (
           <EmptyState title="No public flow data" body="The public ship-flow endpoint did not return any data." />
+        )}
+      </Panel>
+
+      <Panel
+        title="Malaysia port-risk preview"
+        subtitle={integrationTruthLabels.portRisk}
+        right={<Chip label={portRiskPreview?.is_live ? 'Live' : 'Preview'} tone={portRiskPreview?.is_live ? 'success' : 'warning'} />}
+      >
+        {portRiskPreview?.ports?.length ? (
+          portRiskPreview.ports.slice(0, 4).map((port) => (
+            <View key={port.port_name} style={styles.rowCard}>
+              <View style={styles.rowCardMain}>
+                <Text style={styles.rowTitle}>{port.port_name}</Text>
+                <Text style={styles.rowBody}>{port.pressure_status} • Score {port.pressure_score}</Text>
+                <Text style={styles.rowBodyMuted}>
+                  Weather {port.weather_risk?.level || 'N/A'} • Marine {port.marine_risk?.level || 'N/A'}
+                </Text>
+              </View>
+              <Chip label={port.is_preview ? 'Preview' : 'Public'} tone={port.is_preview ? 'warning' : 'default'} />
+            </View>
+          ))
+        ) : (
+          <EmptyState title="No port-risk preview" body="Preview risk signals were not returned for this session." />
         )}
       </Panel>
 
@@ -2313,7 +2639,7 @@ function CopilotScreen({ session, sessionPlan }) {
       </Panel>
 
       <Panel title="Capabilities">
-        {capabilities ? <JsonPreview data={capabilities} /> : <EmptyState title="No capabilities" body="Capabilities could not be loaded." />}
+        {capabilities ? <CapabilityMatrix currentPlan={sessionPlan} capabilities={capabilities} /> : <EmptyState title="No capabilities" body="Capabilities could not be loaded." />}
       </Panel>
 
       <Panel title="Structured response">
@@ -2367,17 +2693,26 @@ function PlansScreen() {
           </AppCard>
         ))}
       </Panel>
+
+      <Panel title="Integration ladder" subtitle="What each tier can safely connect to.">
+        <View style={styles.listBlock}>
+          <Text style={styles.listItem}>• Free: public/preview warehouse directory, Malaysia demand signals, BNM rates, and weather plus preview port risk.</Text>
+          <Text style={styles.listItem}>• Premium: user-owned marketplace connections and own-store weekly best sellers.</Text>
+          <Text style={styles.listItem}>• Boost: paid market-intelligence and advanced logistics provider readiness. If no provider is configured, IntelliFlow returns not configured instead of fake live data.</Text>
+        </View>
+      </Panel>
     </View>
   );
 }
 
-function AccountScreen({ currentUser, sessionPlan }) {
+function AccountScreen({ currentUser, sessionPlan, themeMode, onToggleTheme }) {
   return (
     <View style={styles.screenStack}>
       <Panel title="Profile" subtitle="Workspace identity and current plan context.">
         <InlineValue label="Name" value={currentUser?.full_name || 'IntelliFlow user'} />
         <InlineValue label="Email" value={currentUser?.email || 'Not available'} />
         <InlineValue label="Plan" value={toDisplayPlan(sessionPlan)} />
+        <ActionButton title={`Switch to ${themeMode === 'dark' ? 'Light' : 'Dark'} Mode`} onPress={onToggleTheme} tone="secondary" />
       </Panel>
     </View>
   );
@@ -2430,9 +2765,9 @@ function RecommendationsScreen({ session }) {
 }
 
 function AlertsScreen({ session }) {
-  const [risks, setRisks] = useState([]);
-  const [delayed, setDelayed] = useState([]);
-  const [recommendations, setRecommendations] = useState([]);
+  const [notifications, setNotifications] = useState([]);
+  const [preferences, setPreferences] = useState([]);
+  const [unreadCount, setUnreadCount] = useState(0);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
 
@@ -2440,14 +2775,14 @@ function AlertsScreen({ session }) {
     setLoading(true);
     setError('');
     try {
-      const [riskData, delayedData, recommendationData] = await Promise.all([
-        api.getInventoryRisks(session),
-        api.getDelayedShipments(session),
-        api.getRecommendations(session, { limit: 20 }),
+      const [notificationData, preferenceData, unreadData] = await Promise.all([
+        api.getNotifications(session, { limit: 30 }),
+        api.getNotificationPreferences(session),
+        api.getNotificationUnreadCount(session),
       ]);
-      setRisks(riskData.filter((item) => ['critical', 'high'].includes(item.risk_level)));
-      setDelayed(delayedData);
-      setRecommendations(recommendationData.filter((item) => ['high', 'critical'].includes((item.severity || '').toLowerCase())));
+      setNotifications(notificationData || []);
+      setPreferences(preferenceData || []);
+      setUnreadCount(unreadData?.unread_count || 0);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -2463,49 +2798,89 @@ function AlertsScreen({ session }) {
     return <LoadingBlock />;
   }
 
+  const markRead = async (notificationId) => {
+    try {
+      await api.markNotificationRead(session, notificationId);
+      setNotifications((current) =>
+        current.map((item) => (item.id === notificationId ? { ...item, read_at: new Date().toISOString() } : item))
+      );
+      setUnreadCount((count) => Math.max(0, count - 1));
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  const togglePreference = async (preference) => {
+    try {
+      const updated = await api.updateNotificationPreference(session, preference.category, {
+        enabled: !preference.enabled,
+        push_enabled: preference.push_enabled,
+        email_enabled: preference.email_enabled,
+      });
+      setPreferences((current) => current.map((item) => (item.category === preference.category ? updated : item)));
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
   return (
     <View style={styles.screenStack}>
-      <Panel title="Alerts" subtitle="A mobile command view for critical stock, logistics, and recommendation signals.">
+      <Panel title="Notifications" subtitle="Unread alerts and preferences filtered by the backend subscription tier.">
         <ErrorBanner message={error} />
         <View style={styles.metricGrid}>
-          <MetricCard label="Critical stock risks" value={String(risks.length)} tone="accent" />
-          <MetricCard label="Delayed shipments" value={String(delayed.length)} />
-          <MetricCard label="High severity recommendations" value={String(recommendations.length)} />
+          <MetricCard label="Unread" value={String(unreadCount)} tone="accent" />
+          <MetricCard label="Categories" value={String(preferences.length)} />
+          <MetricCard label="Recent alerts" value={String(notifications.length)} />
         </View>
       </Panel>
 
-      <Panel title="Inventory alerts">
-        {risks.length ? (
-          risks.map((risk) => (
-            <View key={risk.product_id} style={styles.rowCard}>
-              <Text style={styles.rowTitle}>{risk.product_name}</Text>
-              <Text style={styles.rowBody}>
-                Available {risk.current_stock} • Min {risk.min_threshold} • Risk {risk.risk_level}
-              </Text>
+      <Panel title="Recent alerts">
+        {notifications.length ? (
+          notifications.map((notification) => (
+            <View key={notification.id} style={styles.rowCard}>
+              <View style={styles.recommendationHeader}>
+                <View style={styles.recommendationCopy}>
+                  <Text style={styles.rowTitle}>{notification.title}</Text>
+                  <Text style={styles.rowBodyMuted}>
+                    {notification.category} • {displayDate(notification.created_at)}
+                  </Text>
+                </View>
+                <Chip label={notification.read_at ? 'Read' : 'Unread'} tone={notification.read_at ? 'default' : 'accent'} />
+              </View>
+              <Text style={styles.rowBody}>{notification.body}</Text>
+              {!notification.read_at ? (
+                <View style={styles.inlineActions}>
+                  <ActionButton title="Mark read" tone="secondary" onPress={() => markRead(notification.id)} />
+                </View>
+              ) : null}
             </View>
           ))
         ) : (
-          <EmptyState title="No critical stock alerts" body="No high-priority stock risks are visible." />
+          <EmptyState title="No alerts" body="No workspace notifications are currently available." />
         )}
       </Panel>
 
-      <Panel title="Delayed shipment alerts">
-        {delayed.length ? (
-          delayed.map((shipment) => (
-            <View key={shipment.id} style={styles.rowCard}>
-              <Text style={styles.rowTitle}>{shipment.shipment_number}</Text>
-              <Text style={styles.rowBody}>
-                {shipment.origin || 'Unknown'} to {shipment.destination || 'Unknown'} • {shipment.delay_reason || 'Delayed'}
-              </Text>
+      <Panel title="Preferences">
+        {preferences.length ? (
+          preferences.map((preference) => (
+            <View key={preference.category} style={styles.rowCard}>
+              <View style={styles.recommendationHeader}>
+                <View style={styles.recommendationCopy}>
+                  <Text style={styles.rowTitle}>{preference.category.replaceAll('_', ' ')}</Text>
+                  <Text style={styles.rowBodyMuted}>
+                    Push {preference.push_enabled ? 'on' : 'off'} • Email {preference.email_enabled ? 'on' : 'off'}
+                  </Text>
+                </View>
+                <Chip label={preference.enabled ? 'Enabled' : 'Muted'} tone={preference.enabled ? 'success' : 'warning'} />
+              </View>
+              <View style={styles.inlineActions}>
+                <ActionButton title={preference.enabled ? 'Mute' : 'Enable'} tone="secondary" onPress={() => togglePreference(preference)} />
+              </View>
             </View>
           ))
         ) : (
-          <EmptyState title="No delayed shipments" body="No delayed shipments are currently reported." />
+          <EmptyState title="No preferences" body="Notification preferences were not returned for this account." />
         )}
-      </Panel>
-
-      <Panel title="Recommendation alerts">
-        {recommendations.length ? recommendations.map((item) => <RecommendationItem key={item.id} recommendation={item} />) : <EmptyState title="No high-severity recommendations" body="No urgent agent recommendations are currently visible." />}
       </Panel>
     </View>
   );
@@ -2571,10 +2946,10 @@ function RecommendationItem({ recommendation }) {
   );
 }
 
-function ScreenRenderer({ activeScreen, session, sessionPlan, currentUser }) {
+function ScreenRenderer({ activeScreen, session, sessionPlan, currentUser, themeMode, onToggleTheme }) {
   switch (activeScreen) {
     case 'dashboard':
-      return <DashboardScreen session={session} />;
+      return <DashboardScreen session={session} currentUser={currentUser} sessionPlan={sessionPlan} />;
     case 'products':
       return <ProductsScreen session={session} />;
     case 'inventory':
@@ -2596,7 +2971,7 @@ function ScreenRenderer({ activeScreen, session, sessionPlan, currentUser }) {
     case 'plans':
       return <PlansScreen />;
     case 'account':
-      return <AccountScreen currentUser={currentUser} sessionPlan={sessionPlan} />;
+      return <AccountScreen currentUser={currentUser} sessionPlan={sessionPlan} themeMode={themeMode} onToggleTheme={onToggleTheme} />;
     case 'recommendations':
       return <RecommendationsScreen session={session} />;
     case 'alerts':
@@ -2604,7 +2979,7 @@ function ScreenRenderer({ activeScreen, session, sessionPlan, currentUser }) {
     case 'manufacturing':
       return <ManufacturingScreen />;
     default:
-      return <DashboardScreen session={session} />;
+      return <DashboardScreen session={session} currentUser={currentUser} sessionPlan={sessionPlan} />;
   }
 }
 
@@ -2665,10 +3040,10 @@ export default function MobileApp() {
     const publicSession = { apiUrl, plan: 'FREE', token: null, userId: null };
     await demoBootstrap(publicSession);
     const demo = await demoLogin(publicSession);
-    const candidate = {
-      apiUrl,
-      token: demo?.access_token,
-      plan: demo?.user?.plan || 'BOOST',
+      const candidate = {
+        apiUrl,
+        token: demo?.access_token,
+        plan: demo?.user?.plan || 'BOOST',
       userId: demo?.user?.id || null,
       organizationId: demo?.user?.organization_id || null,
       isDemo: true,
@@ -2682,10 +3057,11 @@ export default function MobileApp() {
         email: demo?.user?.email || 'demo@intelliflow.local',
         full_name: demo?.user?.name || 'Demo User',
       };
-    }
-    candidate.userId = me?.id || candidate.userId;
-    setSession(candidate);
-    setCurrentUser(me);
+      }
+      candidate.plan = me?.subscription_plan || candidate.plan;
+      candidate.userId = me?.id || candidate.userId;
+      setSession(candidate);
+      setCurrentUser(me);
   };
 
   const initializeAppSession = async () => {
@@ -2767,6 +3143,7 @@ export default function MobileApp() {
         userId: null,
       };
       const me = await api.getMe(candidate);
+      candidate.plan = me?.subscription_plan || candidate.plan;
       candidate.userId = me?.id || null;
       setSession(candidate);
       setCurrentUser(me);
@@ -2864,31 +3241,7 @@ export default function MobileApp() {
       ) : (
         <View style={styles.appShell}>
           <MobileHeader
-            subtitle={session?.isDemo ? 'Demo workspace' : currentUser?.email || 'Live workspace'}
             theme={theme}
-            right={
-              <View style={styles.headerRightActions}>
-                <View
-                  style={[
-                    styles.modeOrbWrap,
-                    showModeOrb ? styles.modeOrbWrapVisible : styles.modeOrbWrapHidden,
-                  ]}
-                >
-                  <View
-                    style={[
-                      styles.modeOrb,
-                      themeMode === 'dark' ? styles.modeOrbDark : styles.modeOrbLight,
-                    ]}
-                  />
-                </View>
-                <Pressable onPress={toggleTheme} style={styles.headerCompactToggle}>
-                  <Text style={styles.headerCompactToggleText}>{themeMode === 'dark' ? 'Light' : 'Dark'}</Text>
-                </Pressable>
-                <Pressable onPress={() => setActiveScreen('account')} style={styles.headerCompactAvatar}>
-                  <Text style={styles.headerCompactAvatarText}>{(currentUser?.full_name || 'U').slice(0, 1)}</Text>
-                </Pressable>
-              </View>
-            }
           />
           <MobileNavigationTracker
             items={navigationItems}
@@ -2899,7 +3252,7 @@ export default function MobileApp() {
           />
 
           <ScrollView contentContainerStyle={styles.content}>
-            <ScreenRenderer activeScreen={activeScreen} session={session} sessionPlan={sessionPlan} currentUser={currentUser} />
+            <ScreenRenderer activeScreen={activeScreen} session={session} sessionPlan={sessionPlan} currentUser={currentUser} themeMode={themeMode} onToggleTheme={toggleTheme} />
           </ScrollView>
 
           <BottomTabBar activeScreen={activeScreen} onSelect={setActiveScreen} />
@@ -3987,6 +4340,197 @@ function createStyles(theme) {
   metricCardAccent: {
     backgroundColor: 'rgba(246, 152, 50, 0.16)',
     borderColor: 'rgba(246, 152, 50, 0.24)',
+  },
+  capabilityMatrix: {
+    gap: 14,
+  },
+  capabilityMatrixHeader: {
+    gap: 4,
+  },
+  capabilityMatrixTitle: {
+    color: theme.text,
+    fontSize: responsiveFont(16),
+    fontWeight: '700',
+  },
+  capabilityMatrixMeta: {
+    color: theme.textMuted,
+    fontSize: responsiveFont(12),
+  },
+  capabilityTable: {
+    borderRadius: 18,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: theme.border,
+  },
+  capabilityTableHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: theme.panelGlass,
+    paddingHorizontal: 10,
+    paddingVertical: 10,
+    gap: 8,
+  },
+  capabilityTableRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 12,
+    gap: 8,
+    borderTopWidth: 1,
+    borderTopColor: theme.border,
+  },
+  capabilityTableHeaderText: {
+    flex: 0.6,
+    color: theme.textSoft,
+    fontSize: responsiveFont(11),
+    fontWeight: '700',
+    textAlign: 'center',
+    textTransform: 'uppercase',
+  },
+  capabilityFeatureCell: {
+    flex: 1.8,
+    textAlign: 'left',
+  },
+  capabilityRowLabel: {
+    color: theme.text,
+    fontSize: responsiveFont(12),
+    lineHeight: responsiveLineHeight(12, 1.35),
+  },
+  capabilityDot: {
+    width: 28,
+    height: 28,
+    borderRadius: 999,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  capabilityDotEnabled: {
+    backgroundColor: 'rgba(46, 165, 111, 0.18)',
+    borderWidth: 1,
+    borderColor: 'rgba(46, 165, 111, 0.32)',
+  },
+  capabilityDotDisabled: {
+    backgroundColor: 'rgba(216, 90, 90, 0.16)',
+    borderWidth: 1,
+    borderColor: 'rgba(216, 90, 90, 0.28)',
+  },
+  capabilityDotText: {
+    fontSize: responsiveFont(14),
+    fontWeight: '800',
+  },
+  capabilityDotTextEnabled: {
+    color: '#7cf0b6',
+  },
+  capabilityDotTextDisabled: {
+    color: '#ffc4c4',
+  },
+  allowedDomainWrap: {
+    gap: 8,
+  },
+  allowedDomainLabel: {
+    color: theme.textSoft,
+    fontSize: responsiveFont(11),
+    textTransform: 'uppercase',
+    fontWeight: '700',
+    letterSpacing: 1,
+  },
+  shipFlowMapShell: {
+    alignItems: 'center',
+    gap: 12,
+    marginBottom: 6,
+  },
+  shipFlowMapBoard: {
+    position: 'relative',
+    borderRadius: 24,
+    overflow: 'hidden',
+    backgroundColor: '#0b1119',
+    borderWidth: 1,
+    borderColor: 'rgba(154, 180, 215, 0.14)',
+  },
+  shipFlowMapGrid: {
+    ...StyleSheet.absoluteFillObject,
+    opacity: 0.12,
+    backgroundColor: 'transparent',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.03)',
+  },
+  shipFlowMapGlowLeft: {
+    position: 'absolute',
+    left: -30,
+    bottom: 18,
+    width: 130,
+    height: 110,
+    borderRadius: 999,
+    backgroundColor: 'rgba(255,100,51,0.22)',
+  },
+  shipFlowMapGlowRight: {
+    position: 'absolute',
+    right: -10,
+    top: 36,
+    width: 120,
+    height: 120,
+    borderRadius: 999,
+    backgroundColor: 'rgba(66,108,240,0.18)',
+  },
+  shipFlowSegment: {
+    position: 'absolute',
+    height: 3,
+    borderRadius: 999,
+    backgroundColor: '#47b4f4',
+    opacity: 0.88,
+  },
+  shipFlowPort: {
+    position: 'absolute',
+    width: 14,
+    height: 14,
+    borderRadius: 999,
+    borderWidth: 2,
+    borderColor: 'rgba(255,255,255,0.16)',
+  },
+  shipFlowPortLow: {
+    backgroundColor: '#34d399',
+  },
+  shipFlowPortMedium: {
+    backgroundColor: '#fbbf24',
+  },
+  shipFlowPortHigh: {
+    backgroundColor: '#f87171',
+  },
+  shipFlowPortCritical: {
+    backgroundColor: '#991b1b',
+  },
+  shipFlowDot: {
+    position: 'absolute',
+    width: 8,
+    height: 8,
+    borderRadius: 999,
+    backgroundColor: '#d8e9ff',
+  },
+  shipFlowLegend: {
+    width: '100%',
+    gap: 8,
+  },
+  shipFlowLegendTitle: {
+    color: theme.textSoft,
+    fontSize: responsiveFont(11),
+    fontWeight: '700',
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+  },
+  shipFlowLegendRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  shipFlowLegendSwatch: {
+    width: 10,
+    height: 10,
+    borderRadius: 999,
+  },
+  shipFlowLegendText: {
+    color: theme.textMuted,
+    fontSize: responsiveFont(12),
+    marginRight: 6,
   },
   metricLabel: {
     color: theme.textSoft,

@@ -7,6 +7,7 @@ from app.auth import get_current_user
 from app.database import get_db
 from app.models import Customer, User
 from app.schemas import CustomerCreate, CustomerRead
+from app.services.tenant_service import get_owned_customer
 
 router = APIRouter()
 
@@ -16,8 +17,7 @@ async def list_customers(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    _ = current_user
-    return db.query(Customer).order_by(Customer.name.asc()).all()
+    return db.query(Customer).filter(Customer.owner_id == current_user.id).order_by(Customer.name.asc()).all()
 
 
 @router.post("/", response_model=CustomerRead, status_code=status.HTTP_201_CREATED)
@@ -26,8 +26,7 @@ async def create_customer(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    _ = current_user
-    customer = Customer(**payload.model_dump())
+    customer = Customer(**payload.model_dump(), owner_id=current_user.id)
     db.add(customer)
     db.commit()
     db.refresh(customer)
@@ -40,8 +39,4 @@ async def get_customer(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    _ = current_user
-    customer = db.query(Customer).filter(Customer.id == customer_id).first()
-    if customer is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Customer not found")
-    return customer
+    return get_owned_customer(db, owner_id=current_user.id, customer_id=customer_id)

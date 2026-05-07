@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import CopilotResultCard from '@/components/ui/CopilotResultCard'
 import PlanAccessNotice from '@/components/ui/PlanAccessNotice'
 import RecommendationCard from '@/components/ui/RecommendationCard'
 import { copilotAPI } from '@/lib/api'
@@ -41,18 +42,18 @@ export default function ReturnsPage() {
   if (!capabilities?.features.returns_profit) {
     return (
       <PlanAccessNotice
-        requiredPlan="PRO"
-        title="Returns profit leakage is available on Pro."
+        requiredPlan="PREMIUM"
+        title="Returns profit leakage is available on Premium."
         body="Free workspaces can use basic inventory insight views, but return-adjusted margin, leakage analytics, and return spike detection are gated at Pro and above."
       />
     )
   }
 
-  const items = Array.isArray(response?.result.items) ? response?.result.items : []
+  const items = Array.isArray(response?.data.items) ? response?.data.items : []
 
   return (
-    <div className="space-y-6">
-      <section className="rounded-[1.6rem] border border-white/12 bg-white/[0.04] p-6 backdrop-blur-sm">
+    <div className="space-y-6 overflow-x-hidden">
+      <section className="min-w-0 rounded-[1.6rem] border border-white/12 bg-white/[0.04] p-6 backdrop-blur-sm">
         <p className="font-montserrat text-xs font-semibold uppercase tracking-[0.28em] text-[#ff9b3d]/75">Returns Profit Leakage</p>
         <h1 className="font-montserrat mt-4 text-[clamp(2rem,6vw,3rem)] font-semibold leading-[0.98] tracking-[-0.04em] text-white">
           Margin erosion from reverse flow.
@@ -62,7 +63,7 @@ export default function ReturnsPage() {
         </p>
       </section>
 
-      <section className="grid gap-4 md:grid-cols-3">
+      <section className="grid min-w-0 gap-4 md:grid-cols-3">
         {[
           ['Flagged products', String(items?.length ?? 0)],
           ['Plan', capabilities.plan_level],
@@ -75,19 +76,14 @@ export default function ReturnsPage() {
         ))}
       </section>
 
-      <section className="rounded-[1.6rem] border border-white/12 bg-white/[0.04] p-6 backdrop-blur-sm">
-        <p className="font-montserrat text-xs uppercase tracking-[0.18em] text-white/42">Copilot output</p>
-        <pre className="mt-4 overflow-x-auto rounded-2xl bg-white/[0.04] p-4 text-xs text-white/72">
-          {JSON.stringify(response?.result ?? {}, null, 2)}
-        </pre>
-      </section>
+      {response && <CopilotResultCard response={response} />}
 
       <section className="space-y-4">
         <div>
           <p className="font-montserrat text-xs font-semibold uppercase tracking-[0.22em] text-[#ff9b3d]/75">Recommendations</p>
           <h2 className="font-montserrat mt-3 text-3xl font-semibold text-white">Return-driven actions</h2>
         </div>
-        <div className="grid gap-4">
+        <div className="grid min-w-0 gap-4">
           {recommendations.map((recommendation) => (
             <RecommendationCard key={recommendation.id} recommendation={recommendation} />
           ))}

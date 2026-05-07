@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from app.mcp.free_integrations_mcp import register_free_integrations_mcp
 from app.mcp.inventory_mcp import register_inventory_mcp
 from app.mcp.logistics_mcp import register_logistics_mcp
 from app.mcp.rag_mcp import register_rag_mcp
@@ -65,6 +66,7 @@ class InternalMCPServer:
 def build_internal_mcp_registry() -> MCPRegistry:
     registry = MCPRegistry()
     for module_factory in (
+        register_free_integrations_mcp,
         register_inventory_mcp,
         register_sales_mcp,
         register_returns_mcp,

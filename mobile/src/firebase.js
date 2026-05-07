@@ -17,11 +17,11 @@ const app = hasConfig ? (getApps().length ? getApp() : initializeApp(firebaseCon
 export const auth = app
   ? (() => {
       try {
-        return getAuth(app);
-      } catch {
         return initializeAuth(app, {
           persistence: getReactNativePersistence(AsyncStorage),
         });
+      } catch {
+        return getAuth(app);
       }
     })()
   : null;

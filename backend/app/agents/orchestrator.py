@@ -7,7 +7,7 @@ from typing import Any
 from sqlalchemy.orm import Session
 
 from app.agents.llm_provider import generate_answer
-from app.mcp.client import InternalMCPClient, parse_plan_level
+from app.mcp.client import InternalMCPClient, parse_plan_level, resolve_plan_level
 from app.mcp.schemas import MCPToolResult, PlanLevel
 from app.mcp.server import InternalMCPServer
 
@@ -32,6 +32,14 @@ class CopilotResolution:
 def classify_intent(message: str) -> str:
     normalized = message.strip().lower()
 
+    if any(token in normalized for token in ("bnm", "fx", "exchange rate", "currency rate")):
+        return "finance"
+    if any(token in normalized for token in ("trending", "trend", "demand signal", "search interest")):
+        return "market_signals"
+    if any(token in normalized for token in ("warehouse near", "find warehouse", "warehouse directory")):
+        return "warehouse_directory"
+    if any(token in normalized for token in ("port risk", "marine risk", "weather risk")):
+        return "port_risk"
     if any(token in normalized for token in ("low stock", "stock", "inventory", "warehouse")):
         return "inventory"
     if any(token in normalized for token in ("best-selling", "best selling", "sales", "revenue", "velocity")):
@@ -61,6 +69,7 @@ class CopilotOrchestrator:
         user_id = getattr(user, "id", None)
         return self.handle_copilot_query(
             db=db,
+            user=user,
             message=query,
             organization_id=organization_id,
             user_plan=requested_plan or "FREE",
@@ -71,6 +80,7 @@ class CopilotOrchestrator:
         self,
         *,
         db: Session,
+        user,
         message: str,
         organization_id: str | None,
         user_plan: str,
@@ -79,9 +89,9 @@ class CopilotOrchestrator:
         _ = organization_id
         intent = classify_intent(message)
         resolution = self._resolve_intent(intent=intent, message=message)
-        requested_plan = parse_plan_level(user_plan)
+        current_plan = resolve_plan_level(user) if user is not None else parse_plan_level(user_plan)
 
-        if not self._has_plan_access(requested_plan, resolution.required_plan):
+        if not self._has_plan_access(current_plan, resolution.required_plan):
             return self._upgrade_response(
                 intent=intent,
                 required_plan=resolution.required_plan,
@@ -89,17 +99,21 @@ class CopilotOrchestrator:
             )
 
         client = InternalMCPClient(self.server, db=db)
-        user_context = {
-            "user_id": int(user_id) if user_id not in (None, "") else None,
-            "user_plan": requested_plan.value,
-            "scopes": [],
-        }
 
         if resolution.resource_uri:
-            result = client.read_resource(resolution.resource_uri, user_context)
+            result = client.read_resource_for_user(
+                db=db,
+                user=user,
+                uri=resolution.resource_uri,
+            )
             tools_used = [resolution.resource_uri]
         elif resolution.tool_name:
-            result = client.call_tool(resolution.tool_name, resolution.arguments or {}, user_context)
+            result = client.invoke_tool(
+                db=db,
+                user=user,
+                tool_name=resolution.tool_name,
+                payload=resolution.arguments or {},
+            )
             tools_used = [resolution.tool_name]
         else:
             result = MCPToolResult(
@@ -163,6 +177,14 @@ class CopilotOrchestrator:
                 arguments={},
             )
         if intent == "sales":
+            if "my best-selling" in normalized or "my best selling" in normalized:
+                return CopilotResolution(
+                    intent=intent,
+                    feature="marketplace_own_sales_best_sellers",
+                    required_plan=PlanLevel.PRO,
+                    tool_name="integrations.get_own_sales_best_sellers_weekly",
+                    arguments={},
+                )
             return CopilotResolution(
                 intent=intent,
                 feature="sales_best_sellers",
@@ -201,6 +223,38 @@ class CopilotOrchestrator:
                 required_plan=PlanLevel.PRO,
                 tool_name="rag.answer_with_citations",
                 arguments={"query": message},
+            )
+        if intent == "warehouse_directory":
+            return CopilotResolution(
+                intent=intent,
+                feature="malaysia_warehouse_directory",
+                required_plan=PlanLevel.FREE,
+                tool_name="integrations.find_malaysian_warehouses",
+                arguments={"q": message},
+            )
+        if intent == "port_risk":
+            return CopilotResolution(
+                intent=intent,
+                feature="malaysia_port_risk_preview",
+                required_plan=PlanLevel.FREE,
+                tool_name="integrations.get_malaysia_port_risk_preview",
+                arguments={"include_weather": True, "include_marine": True},
+            )
+        if intent == "market_signals":
+            return CopilotResolution(
+                intent=intent,
+                feature="malaysia_demand_signals",
+                required_plan=PlanLevel.FREE,
+                tool_name="integrations.get_malaysia_demand_signals",
+                arguments={"source": "preview"},
+            )
+        if intent == "finance":
+            return CopilotResolution(
+                intent=intent,
+                feature="bnm_rates",
+                required_plan=PlanLevel.FREE,
+                tool_name="integrations.get_bnm_rates",
+                arguments={},
             )
         return CopilotResolution(
             intent="general",
@@ -290,6 +344,11 @@ class CopilotOrchestrator:
         warnings = list(result.warnings or [])
         if isinstance(data.get("warnings"), list):
             warnings.extend(str(item) for item in data["warnings"])
+        items = data.get("items")
+        if items == []:
+            warnings.append("No scoped workspace records matched this request.")
+        if not data and intent in {"inventory", "sales", "returns", "logistics"}:
+            warnings.append("No reliable workspace data was available for this request.")
         if intent == "rag" and not self._extract_citations(data):
             warnings.append("No citations available. Do not treat this as compliance advice.")
         return list(dict.fromkeys(warnings))

@@ -18,16 +18,16 @@ SALES_ORDER_STATUSES = {
 }
 
 
-def _generate_sales_order_number(db: Session) -> str:
-    count = db.query(SalesOrder).count() + 1
+def _generate_sales_order_number(db: Session, *, owner_id: int) -> str:
+    count = db.query(SalesOrder).filter(SalesOrder.owner_id == owner_id).count() + 1
     return f"SO-{datetime.utcnow().strftime('%Y%m%d')}-{count:04d}"
 
 
-def _load_sales_order(db: Session, sales_order_id: int) -> SalesOrder:
+def _load_sales_order(db: Session, sales_order_id: int, *, owner_id: int) -> SalesOrder:
     sales_order = (
         db.query(SalesOrder)
         .options(joinedload(SalesOrder.items))
-        .filter(SalesOrder.id == sales_order_id)
+        .filter(SalesOrder.id == sales_order_id, SalesOrder.owner_id == owner_id)
         .first()
     )
     if sales_order is None:
@@ -56,6 +56,7 @@ def _update_sales_order_status(sales_order: SalesOrder) -> None:
 def create_sales_order(
     db: Session,
     *,
+    owner_id: int,
     customer_id: Optional[int],
     items: list[dict],
     order_date: Optional[datetime] = None,
@@ -66,8 +67,9 @@ def create_sales_order(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Sales order must include at least one item")
 
     sales_order = SalesOrder(
-        order_number=_generate_sales_order_number(db),
+        order_number=_generate_sales_order_number(db, owner_id=owner_id),
         customer_id=customer_id,
+        owner_id=owner_id,
         status="DRAFT",
         order_date=order_date or datetime.utcnow(),
         expected_ship_date=expected_ship_date,
@@ -77,7 +79,7 @@ def create_sales_order(
     db.flush()
 
     for item_data in items:
-        product = db.query(Product).filter(Product.id == item_data["product_id"]).first()
+        product = db.query(Product).filter(Product.id == item_data["product_id"], Product.owner_id == owner_id).first()
         if product is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Product {item_data['product_id']} not found")
         item = SalesOrderItem(
@@ -90,11 +92,11 @@ def create_sales_order(
         db.add(item)
 
     db.commit()
-    return _load_sales_order(db, sales_order.id)
+    return _load_sales_order(db, sales_order.id, owner_id=owner_id)
 
 
-def confirm_sales_order(db: Session, sales_order_id: int) -> SalesOrder:
-    sales_order = _load_sales_order(db, sales_order_id)
+def confirm_sales_order(db: Session, sales_order_id: int, *, owner_id: int) -> SalesOrder:
+    sales_order = _load_sales_order(db, sales_order_id, owner_id=owner_id)
     _ensure_sales_order_not_cancelled(sales_order)
     if sales_order.status not in {"DRAFT", "CONFIRMED"}:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Sales order cannot be confirmed from current status")
@@ -103,7 +105,7 @@ def confirm_sales_order(db: Session, sales_order_id: int) -> SalesOrder:
         for item in sales_order.items:
             warehouse_id = item.warehouse_id
             if warehouse_id is None:
-                default_warehouse = db.query(Warehouse).order_by(Warehouse.id.asc()).first()
+                default_warehouse = db.query(Warehouse).filter(Warehouse.owner_id == owner_id).order_by(Warehouse.id.asc()).first()
                 if default_warehouse is None:
                     raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No warehouse available for reservation")
                 warehouse_id = default_warehouse.id
@@ -128,7 +130,7 @@ def confirm_sales_order(db: Session, sales_order_id: int) -> SalesOrder:
         sales_order.status = "CONFIRMED"
         db.add(sales_order)
         db.commit()
-        return _load_sales_order(db, sales_order.id)
+        return _load_sales_order(db, sales_order.id, owner_id=owner_id)
     except Exception:
         db.rollback()
         raise
@@ -152,11 +154,12 @@ def _find_active_reservations_for_item(db: Session, item: SalesOrderItem) -> lis
 def fulfill_sales_order_item(
     db: Session,
     *,
+    owner_id: int,
     order_id: int,
     item_id: int,
     quantity: int,
 ) -> SalesOrder:
-    sales_order = _load_sales_order(db, order_id)
+    sales_order = _load_sales_order(db, order_id, owner_id=owner_id)
     _ensure_sales_order_not_cancelled(sales_order)
     item = next((row for row in sales_order.items if row.id == item_id), None)
     if item is None:
@@ -195,14 +198,14 @@ def fulfill_sales_order_item(
         db.add(sales_order)
         sync_product_current_stock(db, item.product_id)
         db.commit()
-        return _load_sales_order(db, sales_order.id)
+        return _load_sales_order(db, sales_order.id, owner_id=owner_id)
     except Exception:
         db.rollback()
         raise
 
 
-def cancel_sales_order(db: Session, sales_order_id: int) -> SalesOrder:
-    sales_order = _load_sales_order(db, sales_order_id)
+def cancel_sales_order(db: Session, sales_order_id: int, *, owner_id: int) -> SalesOrder:
+    sales_order = _load_sales_order(db, sales_order_id, owner_id=owner_id)
     if sales_order.status == "CANCELLED":
         return sales_order
 
@@ -229,25 +232,25 @@ def cancel_sales_order(db: Session, sales_order_id: int) -> SalesOrder:
         sales_order.status = "CANCELLED"
         db.add(sales_order)
         db.commit()
-        return _load_sales_order(db, sales_order.id)
+        return _load_sales_order(db, sales_order.id, owner_id=owner_id)
     except Exception:
         db.rollback()
         raise
 
 
-def get_sales_order(db: Session, sales_order_id: int) -> SalesOrder:
-    return _load_sales_order(db, sales_order_id)
+def get_sales_order(db: Session, sales_order_id: int, *, owner_id: int) -> SalesOrder:
+    return _load_sales_order(db, sales_order_id, owner_id=owner_id)
 
 
-def list_sales_orders(db: Session, status_filter: Optional[str] = None) -> list[SalesOrder]:
-    query = db.query(SalesOrder).options(joinedload(SalesOrder.items)).order_by(SalesOrder.created_at.desc())
+def list_sales_orders(db: Session, *, owner_id: int, status_filter: Optional[str] = None) -> list[SalesOrder]:
+    query = db.query(SalesOrder).options(joinedload(SalesOrder.items)).filter(SalesOrder.owner_id == owner_id).order_by(SalesOrder.created_at.desc())
     if status_filter:
         query = query.filter(SalesOrder.status == status_filter)
     return query.all()
 
 
-def get_product_by_sku(db: Session, sku: str) -> Product:
-    product = db.query(Product).filter(Product.sku == sku).first()
+def get_product_by_sku(db: Session, sku: str, *, owner_id: int) -> Product:
+    product = db.query(Product).filter(Product.sku == sku, Product.owner_id == owner_id).first()
     if product is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Product not found")
     return product
@@ -256,11 +259,12 @@ def get_product_by_sku(db: Session, sku: str) -> Product:
 def list_sales(
     db: Session,
     *,
+    owner_id: int,
     product_id: Optional[int] = None,
     start_date: Optional[datetime] = None,
     end_date: Optional[datetime] = None,
 ) -> list[Sale]:
-    query = db.query(Sale)
+    query = db.query(Sale).filter(Sale.owner_id == owner_id)
     if product_id is not None:
         query = query.filter(Sale.product_id == product_id)
     if start_date is not None:

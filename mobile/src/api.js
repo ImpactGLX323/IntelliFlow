@@ -9,6 +9,7 @@ import {
   readyCheck,
   requestJson,
 } from './services/apiClient';
+import { integrationsApi } from './services/integrationsApi';
 
 export { demoBootstrap, demoLogin, getInventorySummary, getMcpRegistry, getPublicAppConfig, healthCheck, readyCheck };
 
@@ -72,8 +73,28 @@ export const api = {
   getPorts: (session) => requestJson(session, '/api/ports'),
   getPublicIndoPacificShipFlow: (session, params) =>
     requestJson(session, '/public/logistics/indo-pacific-ship-flow', { params }),
+  getIntegrationsRegistry: (session) => integrationsApi.getRegistry(session),
+  getIntegrationsStatus: (session) => integrationsApi.getStatus(session),
+  getMalaysiaWarehouses: (session, params) => integrationsApi.getWarehouses(session, params),
+  getNearbyMalaysiaWarehouses: (session, params) => integrationsApi.getNearbyWarehouses(session, params),
+  getMalaysiaPortRiskPreview: (session, params) => integrationsApi.getPortRisk(session, params),
+  getMalaysiaDemandSignals: (session, params) => integrationsApi.getDemandSignals(session, params),
+  getBnmRates: (session, params) => integrationsApi.getBnmRates(session, params),
+  getMarketplaceProviders: (session) => integrationsApi.getMarketplaceProviders(session),
+  connectMarketplaceProvider: (session, provider) => integrationsApi.connectMarketplaceProvider(session, provider),
+  getOwnSalesBestSellers: (session, params) => integrationsApi.getOwnSalesBestSellers(session, params),
+  getMarketWideBestSellers: (session) => integrationsApi.getMarketWideBestSellers(session),
   getCapabilities: (session) => requestJson(session, '/api/ai/capabilities'),
   getRecommendations: (session, params) => requestJson(session, '/api/ai/recommendations', { params }),
+  getNotifications: (session, params) => requestJson(session, '/api/notifications/', { params }),
+  getNotificationUnreadCount: (session) => requestJson(session, '/api/notifications/unread-count'),
+  markNotificationRead: (session, notificationId) =>
+    requestJson(session, `/api/notifications/${notificationId}/read`, { method: 'POST' }),
+  getNotificationPreferences: (session) => requestJson(session, '/api/notifications/preferences'),
+  updateNotificationPreference: (session, category, payload) =>
+    requestJson(session, `/api/notifications/preferences/${category}`, { method: 'PUT', body: payload }),
+  registerNotificationDevice: (session, payload) =>
+    requestJson(session, '/api/notifications/devices', { method: 'POST', body: payload }),
   askCopilot: (session, payload) =>
     copilotQuery(session, {
       ...payload,

@@ -1,31 +1,15 @@
 'use client'
 
 import { useAuth } from '@/contexts/AuthContext'
+import { findNavigationItem, normalizePlanLabel } from '@/lib/navigation'
 import { usePathname, useRouter } from 'next/navigation'
-
-const titleMap: Record<string, string> = {
-  '/dashboard': 'Dashboard',
-  '/products': 'Products',
-  '/inventory': 'Inventory',
-  '/sales': 'Sales',
-  '/purchasing': 'Purchasing',
-  '/transfers': 'Transfers',
-  '/returns': 'Returns',
-  '/alerts': 'Alerts',
-  '/recommendations': 'Recommendations',
-  '/logistics': 'Logistics',
-  '/compliance': 'Compliance',
-  '/copilot': 'Copilot',
-}
 
 export default function Topbar() {
   const { user, logout } = useAuth()
   const pathname = usePathname()
   const router = useRouter()
 
-  const currentTitle =
-    Object.entries(titleMap).find(([prefix]) => pathname === prefix || pathname.startsWith(`${prefix}/`))?.[1] ??
-    'Workspace'
+  const activeItem = findNavigationItem(pathname)
 
   const handleLogout = async () => {
     await logout()
@@ -37,10 +21,10 @@ export default function Topbar() {
       <div className="flex min-w-0 items-center justify-between gap-4 px-4 py-4 sm:px-6 lg:px-8">
         <div className="min-w-0">
           <p className="font-montserrat text-[10px] font-semibold uppercase tracking-[0.28em] text-[#ff9b3d]/75">
-            Workspace
+            {activeItem.requiredPlan} Access
           </p>
           <h1 className="font-montserrat mt-1 truncate text-xl font-semibold text-white">
-            {currentTitle}
+            {activeItem.label}
           </h1>
         </div>
 
@@ -49,7 +33,7 @@ export default function Topbar() {
             {user?.email ?? 'Guest'}
           </div>
           <div className="hidden rounded-full border border-[#d7ff4d]/24 bg-[#d7ff4d]/8 px-3 py-2 font-lexend text-xs uppercase tracking-[0.16em] text-[#d7ff4d]/85 md:block">
-            AI Ready
+            Plan {normalizePlanLabel(user?.subscription_plan)}
           </div>
           <button
             onClick={handleLogout}

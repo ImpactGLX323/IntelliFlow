@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, status
 from sqlalchemy.orm import Session
 
 from app.auth import get_current_user
+from app.core.plan import require_plan
 from app.database import get_db
 from app.models import User
 from app.schemas import (
@@ -30,8 +31,9 @@ from app.services.logistics_service import (
     list_routes,
     update_shipment_status,
 )
+from app.services.notification_service import create_notification
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(require_plan("BOOST"))])
 
 
 @router.get("/shipments", response_model=List[ShipmentRead])
@@ -40,7 +42,7 @@ async def list_shipments(
     current_user: User = Depends(get_current_user),
 ):
     _ = current_user
-    return get_active_shipments(db)
+    return get_active_shipments(db, owner_id=current_user.id)
 
 
 @router.post("/shipments", response_model=ShipmentRead, status_code=status.HTTP_201_CREATED)
@@ -50,7 +52,16 @@ async def post_shipment(
     current_user: User = Depends(get_current_user),
 ):
     _ = current_user
-    return create_shipment(db, **payload.model_dump())
+    shipment = create_shipment(db, owner_id=current_user.id, **payload.model_dump())
+    create_notification(
+        db,
+        user=current_user,
+        category="daily_operations_brief",
+        title="Shipment created",
+        body=f"Shipment {shipment.shipment_number} is now tracked in the control tower.",
+        data={"shipment_id": shipment.id, "status": shipment.status},
+    )
+    return shipment
 
 
 @router.get("/shipments/analytics/delayed", response_model=List[ShipmentRead])
@@ -59,7 +70,7 @@ async def delayed_shipments(
     current_user: User = Depends(get_current_user),
 ):
     _ = current_user
-    return get_delayed_shipments(db)
+    return get_delayed_shipments(db, owner_id=current_user.id)
 
 
 @router.get("/shipments/{shipment_id}", response_model=ShipmentRead)
@@ -69,7 +80,7 @@ async def fetch_shipment(
     current_user: User = Depends(get_current_user),
 ):
     _ = current_user
-    return get_shipment(db, shipment_id)
+    return get_shipment(db, shipment_id, owner_id=current_user.id)
 
 
 @router.post("/shipments/{shipment_id}/status", response_model=ShipmentRead)
@@ -80,7 +91,18 @@ async def post_shipment_status(
     current_user: User = Depends(get_current_user),
 ):
     _ = current_user
-    return update_shipment_status(db, shipment_id, **payload.model_dump())
+    shipment = update_shipment_status(db, shipment_id, owner_id=current_user.id, **payload.model_dump())
+    if shipment.status in {"DELAYED", "CUSTOMS_HOLD"}:
+        create_notification(
+            db,
+            user=current_user,
+            category="customs_hold" if shipment.status == "CUSTOMS_HOLD" else "shipment_delayed",
+            title="Shipment disruption detected",
+            body=f"Shipment {shipment.shipment_number} is now {shipment.status}.",
+            severity="high" if shipment.status == "CUSTOMS_HOLD" else "warning",
+            data={"shipment_id": shipment.id, "status": shipment.status, "delay_reason": shipment.delay_reason},
+        )
+    return shipment
 
 
 @router.post("/shipments/{shipment_id}/legs", response_model=ShipmentRead)
@@ -91,7 +113,7 @@ async def post_shipment_leg(
     current_user: User = Depends(get_current_user),
 ):
     _ = current_user
-    return add_shipment_leg(db, shipment_id, **payload.model_dump())
+    return add_shipment_leg(db, shipment_id, owner_id=current_user.id, **payload.model_dump())
 
 
 @router.get("/shipments/{shipment_id}/delay-impact", response_model=DelayImpactRead)
@@ -101,7 +123,7 @@ async def shipment_delay_impact(
     current_user: User = Depends(get_current_user),
 ):
     _ = current_user
-    return calculate_delay_impact(db, shipment_id)
+    return calculate_delay_impact(db, shipment_id, owner_id=current_user.id)
 
 
 @router.get("/routes", response_model=List[RouteRead])
@@ -110,7 +132,7 @@ async def get_routes(
     current_user: User = Depends(get_current_user),
 ):
     _ = current_user
-    return list_routes(db)
+    return list_routes(db, owner_id=current_user.id)
 
 
 @router.post("/routes", response_model=RouteRead, status_code=status.HTTP_201_CREATED)
@@ -120,7 +142,7 @@ async def post_route(
     current_user: User = Depends(get_current_user),
 ):
     _ = current_user
-    return create_route(db, **payload.model_dump())
+    return create_route(db, owner_id=current_user.id, **payload.model_dump())
 
 
 @router.get("/ports", response_model=List[PortOrNodeRead])
@@ -129,7 +151,7 @@ async def get_ports(
     current_user: User = Depends(get_current_user),
 ):
     _ = current_user
-    return list_ports_or_nodes(db)
+    return list_ports_or_nodes(db, owner_id=current_user.id)
 
 
 @router.post("/ports", response_model=PortOrNodeRead, status_code=status.HTTP_201_CREATED)
@@ -139,4 +161,4 @@ async def post_port(
     current_user: User = Depends(get_current_user),
 ):
     _ = current_user
-    return create_port_or_node(db, **payload.model_dump())
+    return create_port_or_node(db, owner_id=current_user.id, **payload.model_dump())

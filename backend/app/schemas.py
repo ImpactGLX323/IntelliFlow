@@ -13,6 +13,8 @@ class UserResponse(BaseModel):
     email: str
     full_name: Optional[str]
     is_active: bool
+    organization_id: Optional[int] = None
+    subscription_plan: Optional[str] = "FREE"
     
     model_config = ConfigDict(from_attributes=True)
 
@@ -208,6 +210,65 @@ class AICapabilitiesResponse(BaseModel):
     features: dict
 
 
+class OrganizationRead(BaseModel):
+    id: int
+    name: str
+    slug: str
+    subscription_plan: str
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class NotificationRead(BaseModel):
+    id: int
+    category: str
+    severity: str
+    title: str
+    body: str
+    data: Optional[dict] = None
+    read_at: Optional[datetime]
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class NotificationUnreadCountRead(BaseModel):
+    unread_count: int
+
+
+class NotificationPreferenceRead(BaseModel):
+    id: int
+    category: str
+    enabled: bool
+    push_enabled: bool
+    email_enabled: bool
+    updated_at: Optional[datetime]
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class NotificationPreferenceUpdate(BaseModel):
+    enabled: bool
+    push_enabled: bool = False
+    email_enabled: bool = False
+
+
+class UserDeviceCreate(BaseModel):
+    platform: str
+    push_token: str
+    app_version: Optional[str] = None
+
+
+class UserDeviceRead(BaseModel):
+    id: int
+    platform: str
+    push_token: str
+    app_version: Optional[str]
+    last_seen_at: Optional[datetime]
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class IngestRequest(BaseModel):
     source_directory: Optional[str] = None
     collection_name: Optional[str] = None
@@ -237,6 +298,13 @@ class WarehouseCreate(BaseModel):
     code: str
     address: Optional[str] = None
     is_active: bool = True
+
+
+class WarehouseUpdate(BaseModel):
+    name: Optional[str] = None
+    code: Optional[str] = None
+    address: Optional[str] = None
+    is_active: Optional[bool] = None
 
 
 class WarehouseRead(BaseModel):
@@ -373,6 +441,14 @@ class SupplierCreate(BaseModel):
     lead_time_days: Optional[int] = None
 
 
+class SupplierUpdate(BaseModel):
+    name: Optional[str] = None
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    address: Optional[str] = None
+    lead_time_days: Optional[int] = None
+
+
 class SupplierRead(BaseModel):
     id: int
     name: str
@@ -433,6 +509,46 @@ class SalesOrderRead(BaseModel):
 
 class FulfillSalesOrderItemRequest(BaseModel):
     quantity: int = Field(gt=0)
+
+
+class EInvoiceCreateFromSaleRequest(BaseModel):
+    buyer_name: Optional[str] = None
+    buyer_email: Optional[str] = None
+    buyer_tin: Optional[str] = None
+    invoice_type: str = "01"
+
+
+class EInvoiceRead(BaseModel):
+    id: int
+    sale_id: int
+    document_number: str
+    status: str
+    invoice_type: str
+    currency: str
+    buyer_name: Optional[str]
+    buyer_email: Optional[str]
+    buyer_tin: Optional[str]
+    seller_name: str
+    seller_tin: Optional[str]
+    issue_date: datetime
+    subtotal: float
+    tax_amount: float
+    total_amount: float
+    validation_status: str
+    validation_notes: List[str] = []
+    line_items: List[dict] = []
+    lhdn_reference: Optional[str]
+    created_at: datetime
+    updated_at: Optional[datetime]
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class EInvoiceSummaryRead(BaseModel):
+    total_documents: int
+    ready_documents: int
+    missing_tax_identity: int
+    total_invoice_value: float
 
 
 class PurchaseOrderItemCreate(BaseModel):

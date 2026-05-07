@@ -61,6 +61,9 @@ export default function PlansPage() {
               <p className="font-lexend mt-5 text-sm leading-8 text-[#d9c9bb] sm:text-base">
                 Placeholder pricing is used here until live commercial values are finalized. The plan structure reflects the current product direction.
               </p>
+              <div className="mt-6 rounded-2xl border border-[#f3c68c]/18 bg-[#f3c68c]/10 px-4 py-3 text-sm text-[#fff2e2]">
+                Local testing mode currently unlocks Premium and Boost features without billing so you can validate the full product flow.
+              </div>
             </div>
 
             <div className="mt-10 grid gap-5 lg:grid-cols-3">

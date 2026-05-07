@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.orm import Session
 
 from app.auth import get_current_user
+from app.core.plan import require_plan
 from app.database import get_db
 from app.models import User
 from app.schemas import (
@@ -25,8 +26,9 @@ from app.services.returns_service import (
     mark_refunded,
     receive_return_item,
 )
+from app.services.notification_service import create_notification
 
-router = APIRouter()
+router = APIRouter(dependencies=[Depends(require_plan("PRO"))])
 
 
 @router.get("/", response_model=List[ReturnOrderRead])
@@ -35,7 +37,7 @@ async def get_returns(
     current_user: User = Depends(get_current_user),
 ):
     _ = current_user
-    return list_return_orders(db)
+    return list_return_orders(db, owner_id=current_user.id)
 
 
 @router.post("/", response_model=ReturnOrderRead, status_code=status.HTTP_201_CREATED)
@@ -45,14 +47,24 @@ async def post_return_order(
     current_user: User = Depends(get_current_user),
 ):
     _ = current_user
-    return create_return_order(
+    order = create_return_order(
         db,
+        owner_id=current_user.id,
         sales_order_id=payload.sales_order_id,
         customer_id=payload.customer_id,
         items=[item.model_dump() for item in payload.items],
         return_date=payload.return_date,
         notes=payload.notes,
     )
+    create_notification(
+        db,
+        user=current_user,
+        category="return_spike",
+        title="Return requested",
+        body=f"Return order {order.return_number} was created.",
+        data={"return_order_id": order.id, "status": order.status},
+    )
+    return order
 
 
 @router.get("/analytics/high-return-products", response_model=List[HighReturnProductRead])
@@ -63,7 +75,7 @@ async def high_return_products(
     current_user: User = Depends(get_current_user),
 ):
     _ = current_user
-    return get_high_return_products(db, start_date, end_date)
+    return get_high_return_products(db, start_date, end_date, owner_id=current_user.id)
 
 
 @router.get("/analytics/profit-leakage", response_model=ProfitLeakageReportRead)
@@ -74,7 +86,7 @@ async def profit_leakage(
     current_user: User = Depends(get_current_user),
 ):
     _ = current_user
-    return get_profit_leakage_report(db, start_date, end_date)
+    return get_profit_leakage_report(db, start_date, end_date, owner_id=current_user.id)
 
 
 @router.get("/{return_order_id}", response_model=ReturnOrderRead)
@@ -84,7 +96,7 @@ async def fetch_return_order(
     current_user: User = Depends(get_current_user),
 ):
     _ = current_user
-    return get_return_order(db, return_order_id)
+    return get_return_order(db, return_order_id, owner_id=current_user.id)
 
 
 @router.post("/{return_order_id}/approve", response_model=ReturnOrderRead)
@@ -94,7 +106,16 @@ async def approve_return(
     current_user: User = Depends(get_current_user),
 ):
     _ = current_user
-    return approve_return_order(db, return_order_id)
+    order = approve_return_order(db, return_order_id, owner_id=current_user.id)
+    create_notification(
+        db,
+        user=current_user,
+        category="approval_required",
+        title="Return approved",
+        body=f"Return order {order.return_number} is approved for receiving.",
+        data={"return_order_id": order.id, "status": order.status},
+    )
+    return order
 
 
 @router.post("/{return_id}/items/{item_id}/receive", response_model=ReturnOrderRead)
@@ -106,7 +127,16 @@ async def receive_return(
     current_user: User = Depends(get_current_user),
 ):
     _ = current_user
-    return receive_return_item(db, return_id=return_id, item_id=item_id, quantity=payload.quantity)
+    order = receive_return_item(db, owner_id=current_user.id, return_id=return_id, item_id=item_id, quantity=payload.quantity)
+    create_notification(
+        db,
+        user=current_user,
+        category="return_spike",
+        title="Return received",
+        body=f"Return order {order.return_number} was received.",
+        data={"return_order_id": order.id, "status": order.status},
+    )
+    return order
 
 
 @router.post("/{return_order_id}/refund", response_model=ReturnOrderRead)
@@ -117,4 +147,13 @@ async def refund_return(
     current_user: User = Depends(get_current_user),
 ):
     _ = current_user
-    return mark_refunded(db, return_order_id=return_order_id, refund_amount=payload.refund_amount)
+    order = mark_refunded(db, owner_id=current_user.id, return_order_id=return_order_id, refund_amount=payload.refund_amount)
+    create_notification(
+        db,
+        user=current_user,
+        category="profit_leakage",
+        title="Refund recorded",
+        body=f"Refund posted for return order {order.return_number}.",
+        data={"return_order_id": order.id, "status": order.status},
+    )
+    return order

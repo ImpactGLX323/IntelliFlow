@@ -50,10 +50,10 @@ def ensure_demo_seed_data(db: Session, *, demo_user_id: int) -> dict[str, bool]:
     products = _ensure_demo_products(db, user.id)
     _ensure_demo_inventory(db, user.id, products, warehouses)
     _ensure_demo_sales(db, user.id, products, customers, warehouses)
-    _ensure_demo_purchase_orders(db, products, suppliers, warehouses)
-    _ensure_demo_returns(db, products, customers, suppliers, warehouses)
-    _ensure_demo_logistics(db)
-    _ensure_demo_ports(db)
+    _ensure_demo_purchase_orders(db, owner_id, products, suppliers, warehouses)
+    _ensure_demo_returns(db, owner_id, products, customers, suppliers, warehouses)
+    _ensure_demo_logistics(db, owner_id)
+    _ensure_demo_ports(db, owner_id)
     _ensure_demo_recommendations(db, user.id)
     return {"seeded": True}
 
@@ -279,32 +279,35 @@ def _ensure_demo_sales(db: Session, owner_id: int, products: dict[str, Product],
     if not db.execute(text("SELECT 1 FROM sales_orders WHERE notes = 'Demo sales order bootstrap' LIMIT 1")).first():
         sales_order = create_sales_order(
             db,
+            owner_id=owner_id,
             customer_id=customers["Demo Retail Buyer"].id,
             items=[{"product_id": products["SKU-DEMO-001"].id, "warehouse_id": warehouses["MAIN"].id, "quantity_ordered": 6, "unit_price": 42.0}],
             notes="Demo sales order bootstrap",
         )
-        sales_order = confirm_sales_order(db, sales_order.id)
-        fulfill_sales_order_item(db, order_id=sales_order.id, item_id=sales_order.items[0].id, quantity=4)
+        sales_order = confirm_sales_order(db, sales_order.id, owner_id=owner_id)
+        fulfill_sales_order_item(db, owner_id=owner_id, order_id=sales_order.id, item_id=sales_order.items[0].id, quantity=4)
 
 
-def _ensure_demo_purchase_orders(db: Session, products: dict[str, Product], suppliers: dict[str, Supplier], warehouses: dict[str, Warehouse]) -> None:
+def _ensure_demo_purchase_orders(db: Session, owner_id: int, products: dict[str, Product], suppliers: dict[str, Supplier], warehouses: dict[str, Warehouse]) -> None:
     if db.execute(text("SELECT 1 FROM purchase_orders WHERE notes = 'Demo purchase order bootstrap' LIMIT 1")).first():
         return
     po = create_purchase_order(
         db,
+        owner_id=owner_id,
         supplier_id=suppliers["Klang Import Partners"].id,
         items=[{"product_id": products["SKU-DEMO-006"].id, "warehouse_id": warehouses["JFH"].id, "quantity_ordered": 24, "unit_cost": 61.0}],
         notes="Demo purchase order bootstrap",
     )
-    po = mark_purchase_order_ordered(db, po.id)
-    receive_purchase_order_item(db, purchase_order_id=po.id, item_id=po.items[0].id, quantity=10)
+    po = mark_purchase_order_ordered(db, po.id, owner_id=owner_id)
+    receive_purchase_order_item(db, owner_id=owner_id, purchase_order_id=po.id, item_id=po.items[0].id, quantity=10)
 
 
-def _ensure_demo_returns(db: Session, products: dict[str, Product], customers: dict[str, Customer], suppliers: dict[str, Supplier], warehouses: dict[str, Warehouse]) -> None:
+def _ensure_demo_returns(db: Session, owner_id: int, products: dict[str, Product], customers: dict[str, Customer], suppliers: dict[str, Supplier], warehouses: dict[str, Warehouse]) -> None:
     if db.execute(text("SELECT 1 FROM return_orders WHERE notes = 'Demo return order bootstrap' LIMIT 1")).first():
         return
     rtn = create_return_order(
         db,
+        owner_id=owner_id,
         sales_order_id=None,
         customer_id=customers["Demo Marketplace Store"].id,
         items=[
@@ -322,14 +325,15 @@ def _ensure_demo_returns(db: Session, products: dict[str, Product], customers: d
         ],
         notes="Demo return order bootstrap",
     )
-    rtn = approve_return_order(db, rtn.id)
-    receive_return_item(db, return_id=rtn.id, item_id=rtn.items[0].id, quantity=2)
+    rtn = approve_return_order(db, rtn.id, owner_id=owner_id)
+    receive_return_item(db, owner_id=owner_id, return_id=rtn.id, item_id=rtn.items[0].id, quantity=2)
 
 
-def _ensure_demo_logistics(db: Session) -> None:
+def _ensure_demo_logistics(db: Session, owner_id: int) -> None:
     if not db.execute(text("SELECT 1 FROM routes WHERE name = 'Demo Klang-Johor Corridor' LIMIT 1")).first():
         route_obj = create_route(
             db,
+            owner_id=owner_id,
             name="Demo Klang-Johor Corridor",
             origin="Port Klang",
             destination="Johor Bahru",
@@ -343,6 +347,7 @@ def _ensure_demo_logistics(db: Session) -> None:
     if not db.execute(text("SELECT 1 FROM shipments WHERE tracking_number = 'DEMO-TRACK-ACTIVE' LIMIT 1")).first():
         shipment = create_shipment(
             db,
+            owner_id=owner_id,
             related_type="PURCHASE_ORDER",
             related_id="1",
             carrier_name="Demo Oceanic",
@@ -355,6 +360,7 @@ def _ensure_demo_logistics(db: Session) -> None:
         add_shipment_leg(
             db,
             shipment.id,
+            owner_id=owner_id,
             sequence_number=1,
             origin="Port Klang",
             destination="Johor Bahru",
@@ -365,6 +371,7 @@ def _ensure_demo_logistics(db: Session) -> None:
     if not db.execute(text("SELECT 1 FROM shipments WHERE tracking_number = 'DEMO-TRACK-DELAY' LIMIT 1")).first():
         delayed = create_shipment(
             db,
+            owner_id=owner_id,
             related_type="SALES_ORDER",
             related_id="1",
             carrier_name="Demo Oceanic",
@@ -377,6 +384,7 @@ def _ensure_demo_logistics(db: Session) -> None:
         add_shipment_leg(
             db,
             delayed.id,
+            owner_id=owner_id,
             sequence_number=1,
             origin="Singapore",
             destination="Port Klang",
@@ -384,10 +392,11 @@ def _ensure_demo_logistics(db: Session) -> None:
             carrier_name="Demo Oceanic",
             status="IN_TRANSIT",
         )
-        update_shipment_status(db, delayed.id, status="DELAYED", delay_reason="Port congestion demo delay", actual_arrival=None)
+        update_shipment_status(db, delayed.id, owner_id=owner_id, status="DELAYED", delay_reason="Port congestion demo delay", actual_arrival=None)
     if not db.execute(text("SELECT 1 FROM shipments WHERE tracking_number = 'DEMO-TRACK-HOLD' LIMIT 1")).first():
         hold = create_shipment(
             db,
+            owner_id=owner_id,
             related_type="PURCHASE_ORDER",
             related_id="1",
             carrier_name="Demo Customs Line",
@@ -397,19 +406,19 @@ def _ensure_demo_logistics(db: Session) -> None:
             estimated_arrival=datetime.utcnow() - timedelta(days=5),
             customs_status="HOLD",
         )
-        update_shipment_status(db, hold.id, status="CUSTOMS_HOLD", delay_reason="Documentation review demo hold", actual_arrival=None)
+        update_shipment_status(db, hold.id, owner_id=owner_id, status="CUSTOMS_HOLD", delay_reason="Documentation review demo hold", actual_arrival=None)
 
 
-def _ensure_demo_ports(db: Session) -> None:
+def _ensure_demo_ports(db: Session, owner_id: int) -> None:
     ports = [
         ("MYPKG", "Port Klang"),
         ("MYTPP", "Tanjung Pelepas"),
         ("MYPEN", "Penang / Perai"),
     ]
     for code, name in ports:
-        port = db.query(PortOrNode).filter(PortOrNode.code == code).first()
+        port = db.query(PortOrNode).filter(PortOrNode.code == code, PortOrNode.owner_id == owner_id).first()
         if port is None:
-            port = PortOrNode(code=code, name=name, country="Malaysia", node_type="PORT")
+            port = PortOrNode(code=code, name=name, country="Malaysia", node_type="PORT", owner_id=owner_id)
             db.add(port)
     db.commit()
 

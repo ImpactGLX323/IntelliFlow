@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
+from typing import Optional
 
 
 LOCAL_DEV_ORIGINS = {
@@ -28,6 +29,9 @@ class AppConfig:
     support_email: str
     version: str
     auth_mode: str
+    testing_plan_override: Optional[str]
+    free_api_cache_ttl_seconds: int
+    enable_free_api_dev_endpoints: bool
 
 
 def _env_flag(name: str, default: bool = False) -> bool:
@@ -51,6 +55,13 @@ def get_app_config() -> AppConfig:
     auth_mode = os.getenv("AUTH_MODE", "").strip().lower()
     if not auth_mode:
         auth_mode = "hybrid" if demo_mode_enabled else "firebase"
+    testing_plan_override = os.getenv("TEST_PLAN_OVERRIDE", "").strip().upper() or None
+    if testing_plan_override == "PREMIUM":
+        testing_plan_override = "PRO"
+    if testing_plan_override not in {None, "FREE", "PRO", "BOOST"}:
+        testing_plan_override = None
+    if testing_plan_override is None and get_app_env() == "development":
+        testing_plan_override = "BOOST"
     return AppConfig(
         app_name=os.getenv("APP_NAME", "IntelliFlow"),
         app_env=get_app_env(),
@@ -63,5 +74,7 @@ def get_app_config() -> AppConfig:
         support_email=os.getenv("SUPPORT_EMAIL", "support@intelliflow.local"),
         version=os.getenv("APP_VERSION", "1.0.0"),
         auth_mode=auth_mode,
+        testing_plan_override=testing_plan_override,
+        free_api_cache_ttl_seconds=int(os.getenv("FREE_API_CACHE_TTL_SECONDS", "900") or "900"),
+        enable_free_api_dev_endpoints=_env_flag("ENABLE_FREE_API_DEV_ENDPOINTS", True),
     )
-

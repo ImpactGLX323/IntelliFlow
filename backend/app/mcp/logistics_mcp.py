@@ -11,52 +11,53 @@ from app.services import logistics_service
 
 
 def _resource_shipment(db, context: MCPRequestContext, payload: dict) -> dict:
-    return logistics_service.serialize_shipment_status(db, int(payload["shipment_id"]))
+    return logistics_service.serialize_shipment_status(db, int(payload["shipment_id"]), owner_id=int(context.user_id))
 
 
 def _resource_international_active(db, context: MCPRequestContext, payload: dict) -> list[dict]:
-    return logistics_service.get_international_active_shipments(db)
+    return logistics_service.get_international_active_shipments(db, owner_id=int(context.user_id))
 
 
 def _resource_route(db, context: MCPRequestContext, payload: dict) -> dict:
-    return logistics_service.get_route_status(db, int(payload["route_id"]))
+    return logistics_service.get_route_status(db, int(payload["route_id"]), owner_id=int(context.user_id))
 
 
 def _resource_route_delays(db, context: MCPRequestContext, payload: dict) -> list[dict]:
-    return logistics_service.get_route_delays(db)
+    return logistics_service.get_route_delays(db, owner_id=int(context.user_id))
 
 
 def _tool_get_active_shipments(db, context: MCPRequestContext, payload: dict) -> list[dict]:
-    return [logistics_service.serialize_shipment_status(db, shipment.id) for shipment in logistics_service.get_active_shipments(db)]
+    return [logistics_service.serialize_shipment_status(db, shipment.id, owner_id=int(context.user_id)) for shipment in logistics_service.get_active_shipments(db, owner_id=int(context.user_id))]
 
 
 def _tool_get_route_status(db, context: MCPRequestContext, payload: dict) -> dict:
-    return logistics_service.get_route_status(db, int(payload["route_id"]))
+    return logistics_service.get_route_status(db, int(payload["route_id"]), owner_id=int(context.user_id))
 
 
 def _tool_get_eta(db, context: MCPRequestContext, payload: dict) -> dict:
-    return logistics_service.get_eta(db, int(payload["shipment_id"]))
+    return logistics_service.get_eta(db, int(payload["shipment_id"]), owner_id=int(context.user_id))
 
 
 def _tool_detect_late_shipments(db, context: MCPRequestContext, payload: dict) -> list[dict]:
-    return logistics_service.detect_late_shipments(db, int(payload.get("threshold_days", 1)))
+    return logistics_service.detect_late_shipments(db, int(payload.get("threshold_days", 1)), owner_id=int(context.user_id))
 
 
 def _tool_calculate_delay_impact(db, context: MCPRequestContext, payload: dict) -> dict:
-    return logistics_service.calculate_delay_impact(db, int(payload["shipment_id"]))
+    return logistics_service.calculate_delay_impact(db, int(payload["shipment_id"]), owner_id=int(context.user_id))
 
 
 def _tool_find_affected_orders(db, context: MCPRequestContext, payload: dict) -> dict:
-    return logistics_service.find_affected_orders(db, int(payload["shipment_id"]))
+    return logistics_service.find_affected_orders(db, int(payload["shipment_id"]), owner_id=int(context.user_id))
 
 
 def _tool_recommend_reroute(db, context: MCPRequestContext, payload: dict) -> dict:
-    return logistics_service.recommend_reroute(db, int(payload["shipment_id"]))
+    return logistics_service.recommend_reroute(db, int(payload["shipment_id"]), owner_id=int(context.user_id))
 
 
 def _tool_create_logistics_exception(db, context: MCPRequestContext, payload: dict) -> dict:
     return logistics_service.create_logistics_exception(
         db,
+        owner_id=int(context.user_id),
         shipment_id=int(payload["shipment_id"]),
         issue_summary=payload.get("issue_summary"),
     )

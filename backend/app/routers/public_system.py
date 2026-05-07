@@ -69,12 +69,14 @@ async def public_app_config():
             "sales": True,
             "returns": True,
             "logistics_preview": True,
+            "free_integrations": True,
             "mcp": True,
             "rag": True,
             "ai_copilot": True,
+            "notifications": True,
         },
         "plans": ["FREE", "PREMIUM", "BOOST"],
+        "testing_plan_override": "PREMIUM" if config.testing_plan_override == "PRO" else config.testing_plan_override,
         "support_email": config.support_email,
         "timestamp": _timestamp(),
     }
-

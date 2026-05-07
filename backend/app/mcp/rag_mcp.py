@@ -64,7 +64,7 @@ def _tool_get_quick_insights(db, context: MCPRequestContext, payload: dict) -> d
 
 
 def _tool_get_inventory_risk_snapshot(db, context: MCPRequestContext, payload: dict) -> list:
-    return analytics_service.get_inventory_risk_snapshot(db=db)
+    return analytics_service.get_inventory_risk_snapshot(db=db, owner_id=int(context.user_id))
 
 
 def register_rag_mcp() -> MCPModuleSpec:
