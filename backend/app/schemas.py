@@ -104,6 +104,7 @@ class SalesTrend(BaseModel):
 class InventoryRisk(BaseModel):
     product_id: int
     product_name: str
+    available_stock: int
     current_stock: int
     min_threshold: int
     days_of_stock: Optional[float]
@@ -219,6 +220,7 @@ class AICapabilitiesResponse(BaseModel):
     allowed_domains: List[str]
     features: dict
     guardrails: dict
+    provider_status: dict
 
 
 class OrganizationRead(BaseModel):

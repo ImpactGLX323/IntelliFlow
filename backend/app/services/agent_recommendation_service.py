@@ -4,6 +4,7 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
+from app.agents.llm_provider import get_provider_status
 from app.mcp.client import resolve_plan_level
 from app.mcp.schemas import PlanLevel
 from app.models import AgentRecommendation, User
@@ -110,6 +111,7 @@ def get_capabilities(user: User) -> dict[str, Any]:
             "allow_general_fallback": guardrails["allow_general_fallback"],
             "message": "Copilot is restricted to IntelliFlow operational questions and tighter prompt sizes on lower plans.",
         },
+        "provider_status": get_provider_status(),
     }
 
 

@@ -138,6 +138,28 @@ Web / Mobile UI
   - Core product coverage is now substantially implemented.
   - Finish polish only after validating the live copilot/provider path and any remaining workflow-specific runtime issues.
 
+### Final verification run
+
+The following checks were executed during the final pass:
+
+- `python3 -m py_compile backend/app/main.py backend/app/auth.py backend/app/core/plan.py backend/app/agents/orchestrator.py backend/app/routers/ai_copilot.py backend/app/routers/products.py backend/app/routers/inventory.py backend/app/routers/notifications.py backend/app/services/stock_ledger_service.py backend/app/services/notification_service.py backend/app/mcp/client.py backend/app/mcp/server.py backend/app/mcp/inventory_mcp.py backend/app/mcp/sales_mcp.py backend/app/mcp/returns_mcp.py backend/app/mcp/logistics_mcp.py backend/app/mcp/rag_mcp.py backend/app/mcp/free_integrations_mcp.py`
+  - Result: `PASS`
+- `cd frontend && npm run lint`
+  - Result: `PASS`
+- `cd frontend && npm run build`
+  - Result: `PASS`
+  - Note: Next.js emitted the optional production warning that `sharp` is recommended for image optimization.
+- `cd mobile && npx expo config --json`
+  - Result: `PASS`
+- `cd mobile && npx expo export --platform ios --output-dir /private/tmp/intelliflow-expo-final-audit`
+  - Result: `PASS`
+
+### Current runtime caveats not fully covered by the static pass
+
+- Live OpenAI copilot runtime still depends on a valid provider key in [backend/.env](/Users/sami/IntelliFlow/backend/.env).
+- Full backend route verification against a running authenticated session was not included in this static pass.
+- Push notification delivery was not verified as a real device push round-trip.
+
 ## 2. Critical Blockers
 | Priority | Area | Problem | Evidence | Required Fix |
 | --- | --- | --- | --- | --- |
@@ -296,20 +318,31 @@ Web / Mobile UI
 - `PASS`: No public endpoint in the audited set exposes API keys or backend secrets.
   - Evidence: public system and integrations responses
 
-## 14. Missing Work by Priority
-- `P0`
-  - Replace the invalid backend OpenAI API key and re-verify live copilot output.
-- `P1`
-  - Decide whether manufacturing/stocktake scaffolds stay in scope or should remain hidden until complete.
-- `P2`
-  - Deepen push notification runtime behavior if native device delivery is a launch requirement.
+## 14. Current Vulnerabilities and Improvements
 
-## 15. Recommended Next Codex Prompts
-- `OpenAI key fix`
-  - `Replace the invalid OpenAI API key in backend/.env, then verify IntelliFlow copilot returns provider-backed answers and no longer falls back to the template summary.`
-- `Workflow scope cleanup`
-  - `Audit IntelliFlow for scaffold-only operational sections, then either hide them from production navigation or finish the minimum viable workflow without redesigning the app.`
+### P0
+- Live copilot quality still depends on a valid OpenAI runtime key.
+  - Evidence: [backend/app/agents/llm_provider.py](/Users/sami/IntelliFlow/backend/app/agents/llm_provider.py), [backend/app/services/agent_recommendation_service.py](/Users/sami/IntelliFlow/backend/app/services/agent_recommendation_service.py), [backend/.env](/Users/sami/IntelliFlow/backend/.env)
+  - Current impact: The system now exposes provider fallback status to web/mobile clients, but an invalid or rejected key will still force template answers instead of live model output.
+  - Improvement: Replace the invalid key and perform one authenticated live `/ai-copilot/query` verification against the running backend.
+
+### P1
+- Some workflow UIs still depend on route-specific composition rather than more reusable shared abstractions.
+  - Evidence: large monolithic mobile composition in [mobile/src/MobileApp.js](/Users/sami/IntelliFlow/mobile/src/MobileApp.js), route-level workflow handling in multiple `frontend/app/(app)/*/page.tsx` files
+  - Current impact: Direct scaffold routes now redirect back to live inventory workflows, and some repeated mobile row composition has been extracted into a shared helper, but the mobile shell is still more coupled than the web app.
+  - Improvement: Continue extracting repeated operational sections from `MobileApp.js` into focused shared components without changing behavior.
+
+### P2
+- Push notification runtime has a real mobile registration path, but end-to-end delivery still needs device proof.
+  - Evidence: backend notification routes exist in [backend/app/routers/notifications.py](/Users/sami/IntelliFlow/backend/app/routers/notifications.py); mobile registration and preference UI now exist in [mobile/src/MobileApp.js](/Users/sami/IntelliFlow/mobile/src/MobileApp.js); Expo plugin configuration exists in [mobile/app.json](/Users/sami/IntelliFlow/mobile/app.json)
+  - Current impact: In-app notifications, preferences, and device registration code are wired, but actual delivery on a physical device still needs runtime confirmation.
+  - Improvement: Validate real device token registration and end-to-end delivery if push is a launch requirement.
+
+- Product stock display still carries a compatibility `current_stock` field alongside ledger-derived values.
+  - Evidence: [backend/app/models.py](/Users/sami/IntelliFlow/backend/app/models.py), [backend/app/schemas.py](/Users/sami/IntelliFlow/backend/app/schemas.py), [backend/app/services/stock_ledger_service.py](/Users/sami/IntelliFlow/backend/app/services/stock_ledger_service.py)
+  - Current impact: User-facing risk displays now prefer explicit `available_stock`, but create/update compatibility and CSV flows still use `current_stock` as a bridge field.
+  - Improvement: Continue converging all client displays and import flows on explicit ledger-derived `on_hand`, `reserved`, and `available_stock`.
 
 Can we move to finishing touches?
 
-`PARTIAL — core feature coverage is substantially implemented, but confirm live copilot/provider behavior and any scaffold-only sections before calling it final.`
+`PARTIAL — core feature coverage is substantially implemented, scaffold routes no longer present as fake workflows, and notification/device wiring is in place. Confirm live OpenAI provider behavior and real-device push delivery before calling it final.`

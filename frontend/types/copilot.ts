@@ -47,6 +47,13 @@ export interface AICapabilities {
     allow_general_fallback: boolean
     message: string
   }
+  provider_status: {
+    provider: string
+    model: string | null
+    configured: boolean
+    fallback_mode: boolean
+    message: string
+  }
 }
 
 export interface CopilotQueryResponse {

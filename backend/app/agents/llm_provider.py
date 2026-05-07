@@ -9,6 +9,26 @@ from openai import OpenAI
 
 logger = logging.getLogger(__name__)
 
+
+def get_provider_status() -> dict[str, Any]:
+    provider = (os.getenv("AI_PROVIDER") or "template").lower()
+    model_name = os.getenv("OPENAI_CHAT_MODEL") or os.getenv("OPENAI_MODEL") or "gpt-4o-mini"
+    has_key = bool(os.getenv("OPENAI_API_KEY"))
+    configured = provider != "openai" or has_key
+    fallback_mode = provider != "openai" or not has_key
+    message = (
+        "OpenAI provider is configured for live copilot answers."
+        if provider == "openai" and has_key
+        else "Copilot will use template fallback until a valid OpenAI API key is configured."
+    )
+    return {
+        "provider": provider,
+        "model": model_name if provider == "openai" else None,
+        "configured": configured,
+        "fallback_mode": fallback_mode,
+        "message": message,
+    }
+
 def _template_answer(intent: str, data: dict[str, Any], warnings: list[str]) -> str:
     if intent == "inventory":
         items = data.get("items") if isinstance(data.get("items"), list) else None

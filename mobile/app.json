@@ -25,6 +25,15 @@
     "extra": {
       "apiUrl": ""
     },
+    "plugins": [
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/logo/intelliflow-logo.png",
+          "color": "#84481f"
+        }
+      ]
+    ],
     "web": {
       "favicon": "./assets/logo/intelliflow-logo.png"
     }

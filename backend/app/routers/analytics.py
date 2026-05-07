@@ -180,6 +180,7 @@ async def get_inventory_risks(
         risks.append(InventoryRisk(
             product_id=product.id,
             product_name=product.name,
+            available_stock=available_stock,
             current_stock=available_stock,
             min_threshold=product.min_stock_threshold,
             days_of_stock=days_of_stock,

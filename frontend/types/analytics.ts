@@ -25,6 +25,7 @@ export interface DashboardStats {
 export interface InventoryRisk {
   product_id: number
   product_name: string
+  available_stock: number
   current_stock: number
   min_threshold: number
   days_of_stock: number | null

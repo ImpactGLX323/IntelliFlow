@@ -785,7 +785,7 @@ export default function InventoryPage() {
               {risks.map((risk) => (
                 <tr key={risk.product_id}>
                   <td className="px-6 py-5 text-white">{risk.product_name}</td>
-                  <td className="px-6 py-5 text-white/72">{risk.current_stock}</td>
+                  <td className="px-6 py-5 text-white/72">{risk.available_stock}</td>
                   <td className="px-6 py-5 text-white/72">{risk.min_threshold}</td>
                   <td className="px-6 py-5 text-white/72">{risk.days_of_stock?.toFixed(1) ?? 'N/A'}</td>
                   <td className="px-6 py-5"><span className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1 text-xs uppercase tracking-[0.14em] text-white/76">{risk.risk_level}</span></td>

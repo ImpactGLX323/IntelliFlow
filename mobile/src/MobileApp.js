@@ -1,5 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { StatusBar } from 'expo-status-bar';
+import * as Device from 'expo-device';
+import * as Notifications from 'expo-notifications';
 import {
   ActivityIndicator,
   Pressable,
@@ -35,6 +37,15 @@ import LoadingScreen from './screens/LoadingScreen';
 import ServiceUnavailableScreen from './screens/ServiceUnavailableScreen';
 import { getAppTheme, responsiveFont, responsiveLineHeight } from './theme/theme';
 import { integrationTruthLabels, toPreviewBadgeLabel } from './types/integrations';
+
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowBanner: true,
+    shouldShowList: true,
+    shouldPlaySound: false,
+    shouldSetBadge: false,
+  }),
+});
 
 let theme = getAppTheme('light');
 let styles = createStyles(theme);
@@ -151,6 +162,26 @@ function displayDate(value) {
   } catch {
     return String(value);
   }
+}
+
+async function registerForPushNotificationsAsync() {
+  if (!Device.isDevice) {
+    return { token: null, message: 'Push notifications require a physical device.' };
+  }
+
+  const permission = await Notifications.getPermissionsAsync();
+  let finalStatus = permission.status;
+  if (finalStatus !== 'granted') {
+    const requested = await Notifications.requestPermissionsAsync();
+    finalStatus = requested.status;
+  }
+
+  if (finalStatus !== 'granted') {
+    return { token: null, message: 'Notification permissions were not granted.' };
+  }
+
+  const token = await Notifications.getExpoPushTokenAsync();
+  return { token: token.data, message: null };
 }
 
 function money(value) {
@@ -304,6 +335,20 @@ function MetricCard({ label, value, tone = 'default' }) {
   );
 }
 
+function DetailRowCard({ title, body, muted, chipLabel, chipTone = 'default', children }) {
+  return (
+    <View style={styles.rowCard}>
+      <View style={styles.rowCardMain}>
+        <Text style={styles.rowTitle}>{title}</Text>
+        {body ? <Text style={styles.rowBody}>{body}</Text> : null}
+        {muted ? <Text style={styles.rowBodyMuted}>{muted}</Text> : null}
+        {children}
+      </View>
+      {chipLabel ? <Chip label={chipLabel} tone={chipTone} /> : null}
+    </View>
+  );
+}
+
 function CapabilityDot({ enabled }) {
   return (
     <View style={[styles.capabilityDot, enabled ? styles.capabilityDotEnabled : styles.capabilityDotDisabled]}>
@@ -351,6 +396,17 @@ function CapabilityMatrix({ currentPlan, capabilities }) {
           <Text style={styles.guardrailBody}>{capabilities.guardrails.message}</Text>
           <Text style={styles.guardrailMeta}>
             Limit: {capabilities.guardrails.max_chars} characters, {capabilities.guardrails.max_lines} lines.
+          </Text>
+        </View>
+      ) : null}
+      {capabilities?.provider_status ? (
+        <View style={styles.guardrailCard}>
+          <Text style={styles.guardrailTitle}>Provider status</Text>
+          <Text style={styles.guardrailBody}>{capabilities.provider_status.message}</Text>
+          <Text style={styles.guardrailMeta}>
+            {capabilities.provider_status.provider.toUpperCase()}
+            {capabilities.provider_status.model ? ` • ${capabilities.provider_status.model}` : ''}
+            {capabilities.provider_status.fallback_mode ? ' • Fallback active' : ' • Live provider ready'}
           </Text>
         </View>
       ) : null}
@@ -1603,15 +1659,13 @@ function InventoryScreen({ session }) {
       <Panel title="Low-stock board">
         {risks.length ? (
           risks.map((risk) => (
-            <View key={risk.product_id} style={styles.rowCard}>
-              <View style={styles.rowCardMain}>
-                <Text style={styles.rowTitle}>{risk.product_name}</Text>
-                <Text style={styles.rowBody}>
-                  Available {risk.current_stock} • Min {risk.min_threshold} • Days cover {risk.days_of_stock?.toFixed?.(1) ?? 'N/A'}
-                </Text>
-              </View>
-              <Chip label={risk.risk_level} tone={risk.risk_level === 'critical' ? 'warning' : 'default'} />
-            </View>
+            <DetailRowCard
+              key={risk.product_id}
+              title={risk.product_name}
+              body={`Available ${risk.available_stock ?? risk.current_stock} • Min ${risk.min_threshold} • Days cover ${risk.days_of_stock?.toFixed?.(1) ?? 'N/A'}`}
+              chipLabel={risk.risk_level}
+              chipTone={risk.risk_level === 'critical' ? 'warning' : 'default'}
+            />
           ))
         ) : (
           <EmptyState title="No risks" body="Inventory risk analytics are clear for now." />
@@ -1621,17 +1675,12 @@ function InventoryScreen({ session }) {
       <Panel title="Reorder suggestions">
         {reorderSuggestions.length ? (
           reorderSuggestions.map((item, index) => (
-            <View key={`${item.product_id}-${item.warehouse_id}-${index}`} style={styles.rowCard}>
-              <View style={styles.rowCardMain}>
-                <Text style={styles.rowTitle}>Product #{item.product_id} • Warehouse #{item.warehouse_id}</Text>
-                <Text style={styles.rowBody}>
-                  Available {item.available_quantity} • Minimum {item.minimum_quantity} • Suggested {item.suggested_reorder_quantity}
-                </Text>
-                <Text style={styles.rowBodyMuted}>
-                  {item.supplier_name ? `${item.supplier_name} • ${item.supplier_lead_time_days || 'N/A'} day lead time` : 'No supplier context'}
-                </Text>
-              </View>
-            </View>
+            <DetailRowCard
+              key={`${item.product_id}-${item.warehouse_id}-${index}`}
+              title={`Product #${item.product_id} • Warehouse #${item.warehouse_id}`}
+              body={`Available ${item.available_quantity} • Minimum ${item.minimum_quantity} • Suggested ${item.suggested_reorder_quantity}`}
+              muted={item.supplier_name ? `${item.supplier_name} • ${item.supplier_lead_time_days || 'N/A'} day lead time` : 'No supplier context'}
+            />
           ))
         ) : (
           <EmptyState title="No reorder signals" body="Set reorder points to generate replenishment suggestions." />
@@ -1641,15 +1690,12 @@ function InventoryScreen({ session }) {
       <Panel title="Recent inventory movements">
         {transactions.length ? (
           transactions.map((tx) => (
-            <View key={tx.id} style={styles.rowCard}>
-              <View style={styles.rowCardMain}>
-                <Text style={styles.rowTitle}>{tx.transaction_type}</Text>
-                <Text style={styles.rowBody}>
-                  Product #{tx.product_id} • Warehouse #{tx.warehouse_id} • Qty {tx.quantity} • {tx.direction}
-                </Text>
-                <Text style={styles.rowBodyMuted}>{displayDate(tx.created_at)}</Text>
-              </View>
-            </View>
+            <DetailRowCard
+              key={tx.id}
+              title={tx.transaction_type}
+              body={`Product #${tx.product_id} • Warehouse #${tx.warehouse_id} • Qty ${tx.quantity} • ${tx.direction}`}
+              muted={displayDate(tx.created_at)}
+            />
           ))
         ) : (
           <EmptyState title="No movements" body="Inventory transactions will appear here." />
@@ -3096,6 +3142,10 @@ function CopilotScreen({ session, sessionPlan }) {
         <ErrorBanner message={error} />
         <InlineValue label="Requested plan" value={toDisplayPlan(sessionPlan)} />
         <InlineValue label="Backend plan" value={toDisplayPlan(capabilities?.plan_level) || 'Unknown'} />
+        <InlineValue
+          label="Provider"
+          value={capabilities?.provider_status?.fallback_mode ? 'Template fallback' : capabilities?.provider_status?.provider?.toUpperCase() || 'Unknown'}
+        />
         {capabilities?.guardrails ? (
           <View style={styles.guardrailCard}>
             <Text style={styles.guardrailTitle}>Before you send</Text>
@@ -3103,6 +3153,12 @@ function CopilotScreen({ session, sessionPlan }) {
             <Text style={styles.guardrailMeta}>
               Keep it within {capabilities.guardrails.max_chars} characters and {capabilities.guardrails.max_lines} lines.
             </Text>
+          </View>
+        ) : null}
+        {capabilities?.provider_status ? (
+          <View style={styles.guardrailCard}>
+            <Text style={styles.guardrailTitle}>Copilot provider</Text>
+            <Text style={styles.guardrailBody}>{capabilities.provider_status.message}</Text>
           </View>
         ) : null}
         <Text style={styles.sectionLabel}>Prompt</Text>
@@ -3515,6 +3571,7 @@ export default function MobileApp() {
   const [connecting, setConnecting] = useState(false);
   const [bootState, setBootState] = useState('loading');
   const [previewMode, setPreviewMode] = useState(false);
+  const [notificationDeviceRegistered, setNotificationDeviceRegistered] = useState(false);
   const themeMode = 'light';
 
   const sessionPlan = session?.plan || 'FREE';
@@ -3548,6 +3605,7 @@ export default function MobileApp() {
       candidate.userId = me?.id || candidate.userId;
       setSession(candidate);
       setCurrentUser(me);
+      setNotificationDeviceRegistered(false);
   };
 
   const initializeAppSession = async () => {
@@ -3579,6 +3637,30 @@ export default function MobileApp() {
   useEffect(() => {
     initializeAppSession();
   }, []);
+
+  useEffect(() => {
+    const registerDevice = async () => {
+      if (!session?.token || notificationDeviceRegistered) {
+        return;
+      }
+      try {
+        const registration = await registerForPushNotificationsAsync();
+        if (!registration.token) {
+          return;
+        }
+        await api.registerNotificationDevice(session, {
+          platform: Device.osName || 'ios',
+          push_token: registration.token,
+          app_version: '1.0.0',
+        });
+        setNotificationDeviceRegistered(true);
+      } catch {
+        // Best-effort only; push registration should not block the app.
+      }
+    };
+
+    registerDevice();
+  }, [notificationDeviceRegistered, session]);
 
   const connect = async () => {
     setConnecting(true);
@@ -3633,6 +3715,7 @@ export default function MobileApp() {
       candidate.userId = me?.id || null;
       setSession(candidate);
       setCurrentUser(me);
+      setNotificationDeviceRegistered(false);
       setConnectStatus(authMode === 'register' ? 'Workspace created successfully. Opening your IntelliFlow mobile workspace...' : 'Sign-in successful. Opening your IntelliFlow mobile workspace...');
     } catch (err) {
       if (authMode === 'register') {
@@ -3665,6 +3748,7 @@ export default function MobileApp() {
     if (session?.isDemo) {
       setSession(null);
       setCurrentUser(null);
+      setNotificationDeviceRegistered(false);
       initializeAppSession();
       return;
     }
@@ -3675,6 +3759,7 @@ export default function MobileApp() {
     } catch {}
     setSession(null);
     setCurrentUser(null);
+    setNotificationDeviceRegistered(false);
     setActiveScreen('dashboard');
     setConnectStatus('');
   };

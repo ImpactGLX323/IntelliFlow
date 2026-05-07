@@ -31,7 +31,7 @@ const productFields: Array<{
   { label: 'Supplier', key: 'supplier', type: 'text', required: false },
   { label: 'Price', key: 'price', type: 'number', required: true, step: '0.01' },
   { label: 'Cost', key: 'cost', type: 'number', required: true, step: '0.01' },
-  { label: 'Current Stock', key: 'current_stock', type: 'number', required: true },
+  { label: 'Opening Stock', key: 'current_stock', type: 'number', required: true },
   { label: 'Min Stock Threshold', key: 'min_stock_threshold', type: 'number', required: false },
 ]
 

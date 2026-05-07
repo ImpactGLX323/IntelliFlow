@@ -89,6 +89,16 @@ export default function CopilotPage() {
               </p>
             </div>
           )}
+          {capabilities?.provider_status && (
+            <div className="mt-4 rounded-2xl border border-white/10 bg-white/[0.035] px-4 py-3 text-sm text-[#d7c0aa]">
+              <p className="font-medium text-white/88">{capabilities.provider_status.message}</p>
+              <p className="mt-1 text-white/58">
+                {capabilities.provider_status.provider.toUpperCase()}
+                {capabilities.provider_status.model ? ` • ${capabilities.provider_status.model}` : ''}
+                {capabilities.provider_status.fallback_mode ? ' • Fallback active' : ' • Live provider ready'}
+              </p>
+            </div>
+          )}
           <textarea
             rows={5}
             className="font-lexend mt-6 w-full rounded-2xl border border-white/12 bg-white/[0.04] px-4 py-3 text-sm text-white outline-none placeholder:text-white/28"
