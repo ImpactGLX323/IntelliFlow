@@ -4,7 +4,7 @@ import { StyleSheet, Text, View } from 'react-native';
 import IntelliFlowLogo from '../components/brand/IntelliFlowLogo';
 import { responsiveFont, responsiveLineHeight } from '../theme/theme';
 
-export default function LoadingScreen({ label = 'Preparing your supply-chain workspace...', mode = 'dark' }) {
+export default function LoadingScreen({ label = 'Preparing your supply-chain workspace...', mode = 'light' }) {
   const [progress, setProgress] = useState(20);
 
   useEffect(() => {

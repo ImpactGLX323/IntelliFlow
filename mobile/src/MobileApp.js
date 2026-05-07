@@ -1,5 +1,4 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { StatusBar } from 'expo-status-bar';
 import {
   ActivityIndicator,
@@ -36,8 +35,7 @@ import ServiceUnavailableScreen from './screens/ServiceUnavailableScreen';
 import { getAppTheme, responsiveFont, responsiveLineHeight } from './theme/theme';
 import { integrationTruthLabels, toPreviewBadgeLabel } from './types/integrations';
 
-const THEME_STORAGE_KEY = 'intelliflow-mobile-theme';
-let theme = getAppTheme('dark');
+let theme = getAppTheme('light');
 let styles = createStyles(theme);
 
 const SCREENS = [
@@ -50,6 +48,7 @@ const SCREENS = [
   { key: 'returns', label: 'Returns' },
   { key: 'logistics', label: 'Logistics' },
   { key: 'compliance', label: 'Compliance' },
+  { key: 'einvoicing', label: 'E-Invoicing' },
   { key: 'copilot', label: 'AI Copilot' },
   { key: 'plans', label: 'Plans' },
   { key: 'account', label: 'Profile' },
@@ -108,6 +107,30 @@ const PLAN_MATRIX = [
     boost: true,
   },
 ];
+
+const NOTIFICATION_CATEGORY_COPY = {
+  low_stock: 'Low stock',
+  stock_received: 'Stock received',
+  stock_adjusted: 'Stock adjusted',
+  stock_deducted: 'Stock deducted',
+  account_system_alerts: 'Account and system alerts',
+  sales_order_alerts: 'Sales order alerts',
+  purchase_order_due_overdue: 'Purchase order due or overdue',
+  reorder_suggestions: 'Reorder suggestions',
+  return_spike: 'Return spike',
+  profit_leakage: 'Profit leakage',
+  weekly_operations_summary: 'Weekly operations summary',
+  basic_rag_alerts: 'Basic RAG alerts',
+  shipment_delayed: 'Shipment delayed',
+  customs_hold: 'Customs hold',
+  port_pressure_high: 'Port pressure high',
+  route_risk_increased: 'Route risk increased',
+  supplier_risk_warning: 'Supplier risk warning',
+  ai_recommendation_created: 'AI recommendation created',
+  compliance_risk_detected: 'Compliance risk detected',
+  approval_required: 'Approval required',
+  daily_operations_brief: 'Daily operations brief',
+};
 
 function todayIso() {
   return new Date().toISOString().slice(0, 10);
@@ -201,7 +224,6 @@ function AppShowcaseCard({ title, body, accent = 'orange', children }) {
   const onDarkSurface = theme.mode === 'dark' || accent === 'blue';
   return (
     <View style={[styles.showcaseCard, accent === 'blue' && styles.showcaseCardBlue]}>
-      <View style={styles.showcaseGlow} />
       <Text style={[styles.showcaseTitle, onDarkSurface && styles.showcaseTitleOnDark]}>{title}</Text>
       {body ? <Text style={[styles.showcaseBody, onDarkSurface && styles.showcaseBodyOnDark]}>{body}</Text> : null}
       {children}
@@ -365,8 +387,6 @@ function ShipFlowMapPanel({ flow }) {
     <View style={[styles.shipFlowMapShell, { height: mapHeight + 76 }]}>
       <View style={[styles.shipFlowMapBoard, { width: mapWidth, height: mapHeight }]}>
         <View style={styles.shipFlowMapGrid} />
-        <View style={styles.shipFlowMapGlowLeft} />
-        <View style={styles.shipFlowMapGlowRight} />
         {segments.map((segment) => (
           <View
             key={segment.key}
@@ -566,9 +586,6 @@ function SetupScreen({
   onConnect,
   onDemoLogin,
   appConfig,
-  themeMode,
-  showModeOrb,
-  onToggleTheme,
 }) {
   const isWelcome = authMode === 'welcome';
   const isRegister = authMode === 'register';
@@ -578,11 +595,6 @@ function SetupScreen({
   return (
     <ScrollView contentContainerStyle={styles.setupWrap}>
       <View style={styles.authScreen}>
-        <View style={styles.authBackgroundGlowPrimary} />
-        <View style={styles.authBackgroundGlowSecondary} />
-        <View style={styles.authGlassPaneOne} />
-        <View style={styles.authGlassPaneTwo} />
-
         <View style={styles.authTopRow}>
           <View />
           {isWelcome ? (
@@ -1126,13 +1138,27 @@ function InventoryScreen({ session }) {
     setLoading(true);
     setError('');
     try {
-      const [productData, warehouseData, riskData, reorderData, transactionData] = await Promise.all([
+      const requests = [
         api.getProducts(session),
         api.getWarehouses(session),
         api.getInventoryRisks(session),
-        api.getReorderSuggestions(session),
         api.getInventoryTransactions(session, { limit: 25 }),
-      ]);
+      ];
+      const canLoadReorder = ['PREMIUM', 'BOOST', 'PRO'].includes((session?.plan || '').toUpperCase());
+      if (canLoadReorder) {
+        requests.push(api.getReorderSuggestions(session));
+      }
+      const settled = await Promise.allSettled(requests);
+      const failures = settled.filter((result) => result.status === 'rejected');
+      if (failures.length) {
+        setError(failures[0].reason?.message || 'Some inventory panels could not load.');
+      }
+
+      const productData = settled[0]?.status === 'fulfilled' ? settled[0].value : [];
+      const warehouseData = settled[1]?.status === 'fulfilled' ? settled[1].value : [];
+      const riskData = settled[2]?.status === 'fulfilled' ? settled[2].value : [];
+      const transactionData = settled[3]?.status === 'fulfilled' ? settled[3].value : [];
+      const reorderData = canLoadReorder && settled[4]?.status === 'fulfilled' ? settled[4].value : [];
 
       setProducts(productData);
       setWarehouses(warehouseData);
@@ -1151,8 +1177,6 @@ function InventoryScreen({ session }) {
       } else {
         setStock(null);
       }
-    } catch (err) {
-      setError(err.message);
     } finally {
       setLoading(false);
     }
@@ -2354,8 +2378,6 @@ function LogisticsScreen({ session, sessionPlan }) {
       <AppShowcaseCard title="Delivery is delayed" body="Generalized maritime flow and active shipment pressure in one control tower panel.">
         <ErrorBanner message={error} />
         <View style={styles.routePreviewLarge}>
-          <View style={styles.routeMapGlowLeft} />
-          <View style={styles.routeMapGlowRight} />
           <View style={styles.routeNodeOrange} />
           <View style={styles.routePathWide} />
           <View style={styles.routeNodeBlue} />
@@ -2570,6 +2592,136 @@ function ComplianceScreen({ session, sessionPlan }) {
   );
 }
 
+function EInvoicingScreen({ session }) {
+  const [summary, setSummary] = useState(null);
+  const [documents, setDocuments] = useState([]);
+  const [sales, setSales] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState('');
+  const [form, setForm] = useState({ sale_id: '', buyer_name: '', buyer_email: '', buyer_tin: '' });
+
+  const load = async () => {
+    setLoading(true);
+    setError('');
+    try {
+      const [summaryData, documentData, salesData] = await Promise.all([
+        api.getEInvoiceSummary(session),
+        api.getEInvoiceDocuments(session),
+        api.getSales(session),
+      ]);
+      setSummary(summaryData || null);
+      setDocuments(documentData || []);
+      setSales(salesData || []);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    load();
+  }, [session.apiUrl, session.token]);
+
+  const uninvoicedSales = useMemo(() => {
+    const used = new Set(documents.map((item) => item.sale_id));
+    return sales.filter((sale) => !used.has(sale.id));
+  }, [documents, sales]);
+
+  const generateDocument = async () => {
+    if (!form.sale_id) {
+      setError('Select a sale record first.');
+      return;
+    }
+    setSubmitting(true);
+    setError('');
+    try {
+      await api.createEInvoiceFromSale(session, Number(form.sale_id), {
+        buyer_name: form.buyer_name || null,
+        buyer_email: form.buyer_email || null,
+        buyer_tin: form.buyer_tin || null,
+        invoice_type: '01',
+      });
+      setForm({ sale_id: '', buyer_name: '', buyer_email: '', buyer_tin: '' });
+      await load();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  if (loading) {
+    return <LoadingBlock />;
+  }
+
+  return (
+    <View style={styles.screenStack}>
+      <Panel title="E-Invoicing" subtitle="LHDN-ready invoice preparation from recorded sales.">
+        <ErrorBanner message={error} />
+        <View style={styles.metricGrid}>
+          <MetricCard label="Documents" value={String(summary?.total_documents || 0)} />
+          <MetricCard label="Ready" value={String(summary?.ready_documents || 0)} tone="accent" />
+          <MetricCard label="Tax gaps" value={String(summary?.missing_tax_identity || 0)} />
+          <MetricCard label="Invoice value" value={money(summary?.total_invoice_value || 0)} />
+        </View>
+        <Text style={styles.answerText}>
+          Generate structured invoice records from workspace sales, review tax identity gaps, and keep line-item payloads ready for a future MyInvois integration.
+        </Text>
+      </Panel>
+
+      <Panel title="Generate from sale">
+        <SelectorRow
+          label="Sale record"
+          options={uninvoicedSales.map((sale) => ({
+            label: `Sale #${sale.id} • ${money(sale.total_amount)} • ${displayDate(sale.sale_date)}`,
+            value: sale.id,
+          }))}
+          selectedValue={form.sale_id ? Number(form.sale_id) : null}
+          onSelect={(value) => setForm((current) => ({ ...current, sale_id: String(value) }))}
+        />
+        <Field label="Buyer name" value={form.buyer_name} onChangeText={(value) => setForm((current) => ({ ...current, buyer_name: value }))} />
+        <Field label="Buyer email" value={form.buyer_email} onChangeText={(value) => setForm((current) => ({ ...current, buyer_email: value }))} />
+        <Field label="Buyer TIN" value={form.buyer_tin} onChangeText={(value) => setForm((current) => ({ ...current, buyer_tin: value }))} />
+        <ActionButton title={submitting ? 'Generating...' : 'Generate e-invoice'} onPress={generateDocument} disabled={submitting} />
+      </Panel>
+
+      <Panel title="Readiness checks">
+        <View style={styles.listBlock}>
+          <Text style={styles.listItem}>• Structured MYR totals derived from recorded sales.</Text>
+          <Text style={styles.listItem}>• Validation notes highlight missing buyer or seller tax identity.</Text>
+          <Text style={styles.listItem}>• This is readiness support, not a live MyInvois submission claim.</Text>
+        </View>
+      </Panel>
+
+      <Panel title="Generated documents">
+        {documents.length ? (
+          documents.map((document) => (
+            <View key={document.id} style={styles.rowCard}>
+              <View style={styles.rowCardMain}>
+                <Text style={styles.rowTitle}>{document.document_number}</Text>
+                <Text style={styles.rowBody}>
+                  Sale #{document.sale_id} • {document.invoice_type} • {document.currency}
+                </Text>
+                <Text style={styles.rowBodyMuted}>
+                  {document.validation_status?.replaceAll('_', ' ')} • {displayDate(document.issue_date)}
+                </Text>
+                {document.validation_notes?.length ? (
+                  <Text style={styles.rowBodyMuted}>{document.validation_notes.join(' • ')}</Text>
+                ) : null}
+              </View>
+              <Chip label={money(document.total_amount)} active />
+            </View>
+          ))
+        ) : (
+          <EmptyState title="No e-invoice documents" body="Generate the first one from an existing sale record." />
+        )}
+      </Panel>
+    </View>
+  );
+}
+
 function CopilotScreen({ session, sessionPlan }) {
   const [capabilities, setCapabilities] = useState(null);
   const [recommendations, setRecommendations] = useState([]);
@@ -2705,14 +2857,13 @@ function PlansScreen() {
   );
 }
 
-function AccountScreen({ currentUser, sessionPlan, themeMode, onToggleTheme }) {
+function AccountScreen({ currentUser, sessionPlan }) {
   return (
     <View style={styles.screenStack}>
       <Panel title="Profile" subtitle="Workspace identity and current plan context.">
         <InlineValue label="Name" value={currentUser?.full_name || 'IntelliFlow user'} />
         <InlineValue label="Email" value={currentUser?.email || 'Not available'} />
         <InlineValue label="Plan" value={toDisplayPlan(sessionPlan)} />
-        <ActionButton title={`Switch to ${themeMode === 'dark' ? 'Light' : 'Dark'} Mode`} onPress={onToggleTheme} tone="secondary" />
       </Panel>
     </View>
   );
@@ -2775,16 +2926,18 @@ function AlertsScreen({ session }) {
     setLoading(true);
     setError('');
     try {
-      const [notificationData, preferenceData, unreadData] = await Promise.all([
+      const settled = await Promise.allSettled([
         api.getNotifications(session, { limit: 30 }),
         api.getNotificationPreferences(session),
         api.getNotificationUnreadCount(session),
       ]);
-      setNotifications(notificationData || []);
-      setPreferences(preferenceData || []);
-      setUnreadCount(unreadData?.unread_count || 0);
-    } catch (err) {
-      setError(err.message);
+      const failures = settled.filter((result) => result.status === 'rejected');
+      if (failures.length) {
+        setError(failures[0].reason?.message || 'Some notification data could not load.');
+      }
+      setNotifications(settled[0]?.status === 'fulfilled' ? settled[0].value || [] : []);
+      setPreferences(settled[1]?.status === 'fulfilled' ? settled[1].value || [] : []);
+      setUnreadCount(settled[2]?.status === 'fulfilled' ? settled[2].value?.unread_count || 0 : 0);
     } finally {
       setLoading(false);
     }
@@ -2816,6 +2969,19 @@ function AlertsScreen({ session }) {
         enabled: !preference.enabled,
         push_enabled: preference.push_enabled,
         email_enabled: preference.email_enabled,
+      });
+      setPreferences((current) => current.map((item) => (item.category === preference.category ? updated : item)));
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
+  const updateChannel = async (preference, changes) => {
+    try {
+      const updated = await api.updateNotificationPreference(session, preference.category, {
+        enabled: preference.enabled,
+        push_enabled: changes.push_enabled ?? preference.push_enabled,
+        email_enabled: changes.email_enabled ?? preference.email_enabled,
       });
       setPreferences((current) => current.map((item) => (item.category === preference.category ? updated : item)));
     } catch (err) {
@@ -2866,15 +3032,32 @@ function AlertsScreen({ session }) {
             <View key={preference.category} style={styles.rowCard}>
               <View style={styles.recommendationHeader}>
                 <View style={styles.recommendationCopy}>
-                  <Text style={styles.rowTitle}>{preference.category.replaceAll('_', ' ')}</Text>
+                  <Text style={styles.rowTitle}>{NOTIFICATION_CATEGORY_COPY[preference.category] || preference.category.replaceAll('_', ' ')}</Text>
                   <Text style={styles.rowBodyMuted}>
-                    Push {preference.push_enabled ? 'on' : 'off'} • Email {preference.email_enabled ? 'on' : 'off'}
+                    In-app default • Push urgent/actionable • Email summaries later
                   </Text>
                 </View>
                 <Chip label={preference.enabled ? 'Enabled' : 'Muted'} tone={preference.enabled ? 'success' : 'warning'} />
               </View>
               <View style={styles.inlineActions}>
                 <ActionButton title={preference.enabled ? 'Mute' : 'Enable'} tone="secondary" onPress={() => togglePreference(preference)} />
+              </View>
+              <View style={styles.preferenceToggleRow}>
+                <Chip
+                  label={`In-app ${preference.enabled ? 'On' : 'Off'}`}
+                  active={preference.enabled}
+                  onPress={() => togglePreference(preference)}
+                />
+                <Chip
+                  label={`Push ${preference.push_enabled ? 'On' : 'Off'}`}
+                  active={preference.push_enabled}
+                  onPress={() => updateChannel(preference, { push_enabled: !preference.push_enabled })}
+                />
+                <Chip
+                  label={`Email ${preference.email_enabled ? 'On' : 'Off'}`}
+                  active={preference.email_enabled}
+                  onPress={() => updateChannel(preference, { email_enabled: !preference.email_enabled })}
+                />
               </View>
             </View>
           ))
@@ -2946,7 +3129,7 @@ function RecommendationItem({ recommendation }) {
   );
 }
 
-function ScreenRenderer({ activeScreen, session, sessionPlan, currentUser, themeMode, onToggleTheme }) {
+function ScreenRenderer({ activeScreen, session, sessionPlan, currentUser }) {
   switch (activeScreen) {
     case 'dashboard':
       return <DashboardScreen session={session} currentUser={currentUser} sessionPlan={sessionPlan} />;
@@ -2966,12 +3149,14 @@ function ScreenRenderer({ activeScreen, session, sessionPlan, currentUser, theme
       return <LogisticsScreen session={session} sessionPlan={sessionPlan} />;
     case 'compliance':
       return <ComplianceScreen session={session} sessionPlan={sessionPlan} />;
+    case 'einvoicing':
+      return <EInvoicingScreen session={session} />;
     case 'copilot':
       return <CopilotScreen session={session} sessionPlan={sessionPlan} />;
     case 'plans':
       return <PlansScreen />;
     case 'account':
-      return <AccountScreen currentUser={currentUser} sessionPlan={sessionPlan} themeMode={themeMode} onToggleTheme={onToggleTheme} />;
+      return <AccountScreen currentUser={currentUser} sessionPlan={sessionPlan} />;
     case 'recommendations':
       return <RecommendationsScreen session={session} />;
     case 'alerts':
@@ -3001,39 +3186,11 @@ export default function MobileApp() {
   const [connecting, setConnecting] = useState(false);
   const [bootState, setBootState] = useState('loading');
   const [previewMode, setPreviewMode] = useState(false);
-  const [themeMode, setThemeMode] = useState('dark');
-  const [showModeOrb, setShowModeOrb] = useState(false);
+  const themeMode = 'light';
 
   const sessionPlan = session?.plan || 'FREE';
   theme = getAppTheme(themeMode);
   styles = createStyles(theme);
-
-  useEffect(() => {
-    AsyncStorage.getItem(THEME_STORAGE_KEY)
-      .then((stored) => {
-        if (stored === 'light' || stored === 'dark') {
-          setThemeMode(stored);
-        }
-      })
-      .catch(() => {});
-  }, []);
-
-  useEffect(() => {
-    AsyncStorage.setItem(THEME_STORAGE_KEY, themeMode).catch(() => {});
-  }, [themeMode]);
-
-  useEffect(() => {
-    if (!showModeOrb) {
-      return;
-    }
-    const timer = setTimeout(() => setShowModeOrb(false), 5000);
-    return () => clearTimeout(timer);
-  }, [showModeOrb]);
-
-  const toggleTheme = () => {
-    setThemeMode((current) => (current === 'dark' ? 'light' : 'dark'));
-    setShowModeOrb(true);
-  };
 
   const startDemoSession = async (baseSessionOverride) => {
     const apiUrl = baseSessionOverride?.apiUrl || getApiBaseUrl();
@@ -3198,16 +3355,16 @@ export default function MobileApp() {
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <StatusBar style={themeMode === 'dark' ? 'light' : 'dark'} />
+      <StatusBar style="dark" />
       <AppBackdrop />
       {bootState === 'loading' ? (
-        <LoadingScreen label="Launching IntelliFlow..." mode={themeMode} />
+        <LoadingScreen label="Launching IntelliFlow..." mode="light" />
       ) : bootState === 'unavailable' && !previewMode ? (
         <ServiceUnavailableScreen
           onRetry={initializeAppSession}
           onPreview={() => setPreviewMode(true)}
           previewEnabled
-          mode={themeMode}
+          mode="light"
         />
       ) : previewMode ? (
         <PreviewModeScreen onRetry={initializeAppSession} />
@@ -3220,7 +3377,7 @@ export default function MobileApp() {
                 ? 'Sending reset link...'
                 : 'Signing you in...'
           }
-          mode={themeMode}
+          mode="light"
         />
       ) : !session ? (
         <SetupScreen
@@ -3234,9 +3391,7 @@ export default function MobileApp() {
           onConnect={connect}
           onDemoLogin={continueDemo}
           appConfig={appConfig}
-          mode={themeMode}
-          showModeOrb={showModeOrb}
-          onToggleTheme={toggleTheme}
+          mode="light"
         />
       ) : (
         <View style={styles.appShell}>
@@ -3252,7 +3407,7 @@ export default function MobileApp() {
           />
 
           <ScrollView contentContainerStyle={styles.content}>
-            <ScreenRenderer activeScreen={activeScreen} session={session} sessionPlan={sessionPlan} currentUser={currentUser} themeMode={themeMode} onToggleTheme={toggleTheme} />
+            <ScreenRenderer activeScreen={activeScreen} session={session} sessionPlan={sessionPlan} currentUser={currentUser} />
           </ScrollView>
 
           <BottomTabBar activeScreen={activeScreen} onSelect={setActiveScreen} />
@@ -3274,37 +3429,16 @@ function createStyles(theme) {
     backgroundColor: theme.bg,
   },
   backdropGlowTop: {
-    position: 'absolute',
-    top: -120,
-    left: -40,
-    width: 320,
-    height: 320,
-    borderRadius: 999,
-    backgroundColor: isDark ? 'rgba(246, 152, 50, 0.12)' : 'rgba(160, 110, 72, 0.12)',
+    display: 'none',
   },
   backdropGlowMid: {
-    position: 'absolute',
-    top: 180,
-    right: -90,
-    width: 260,
-    height: 260,
-    borderRadius: 999,
-    backgroundColor: isDark ? 'rgba(239, 199, 157, 0.08)' : 'rgba(86, 124, 182, 0.08)',
+    display: 'none',
   },
   backdropGlowBottom: {
-    position: 'absolute',
-    bottom: -120,
-    left: 40,
-    width: 280,
-    height: 280,
-    borderRadius: 999,
-    backgroundColor: isDark ? 'rgba(255, 244, 233, 0.05)' : 'rgba(122, 87, 59, 0.06)',
+    display: 'none',
   },
   backdropGrid: {
-    ...StyleSheet.absoluteFillObject,
-    opacity: 0.18,
-    borderTopWidth: 1,
-    borderTopColor: 'rgba(255,255,255,0.02)',
+    display: 'none',
   },
   appShell: {
     flex: 1,
@@ -3325,47 +3459,16 @@ function createStyles(theme) {
     padding: 20,
   },
   authBackgroundGlowPrimary: {
-    position: 'absolute',
-    top: -40,
-    left: -20,
-    width: 280,
-    height: 280,
-    borderRadius: 999,
-    backgroundColor: 'rgba(246, 152, 50, 0.72)',
-    opacity: 0.9,
+    display: 'none',
   },
   authBackgroundGlowSecondary: {
-    position: 'absolute',
-    top: 0,
-    right: -120,
-    width: 280,
-    height: 400,
-    borderRadius: 999,
-    backgroundColor: 'rgba(79, 29, 9, 0.92)',
+    display: 'none',
   },
   authGlassPaneOne: {
-    position: 'absolute',
-    top: 26,
-    left: -28,
-    width: 210,
-    height: 260,
-    borderRadius: 34,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.08)',
-    backgroundColor: 'rgba(255,255,255,0.03)',
-    transform: [{ rotate: '28deg' }],
+    display: 'none',
   },
   authGlassPaneTwo: {
-    position: 'absolute',
-    top: 82,
-    left: 42,
-    width: 180,
-    height: 220,
-    borderRadius: 28,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.05)',
-    backgroundColor: 'rgba(255,255,255,0.015)',
-    transform: [{ rotate: '28deg' }],
+    display: 'none',
   },
   authTopRow: {
     flexDirection: 'row',
@@ -3755,13 +3858,7 @@ function createStyles(theme) {
     overflow: 'hidden',
   },
   heroOrb: {
-    position: 'absolute',
-    top: -30,
-    right: -60,
-    width: 220,
-    height: 220,
-    borderRadius: 999,
-    backgroundColor: 'rgba(255, 192, 142, 0.08)',
+    display: 'none',
   },
   heroGrid: {
     ...StyleSheet.absoluteFillObject,
@@ -4085,6 +4182,7 @@ function createStyles(theme) {
   content: {
     padding: 16,
     paddingBottom: 120,
+    width: '100%',
   },
   bottomTabShell: {
     position: 'absolute',
@@ -4187,16 +4285,10 @@ function createStyles(theme) {
     backgroundColor: '#3d68ef',
   },
   showcaseGlow: {
-    position: 'absolute',
-    top: -40,
-    right: -20,
-    width: 180,
-    height: 180,
-    borderRadius: 999,
-    backgroundColor: 'rgba(255, 96, 37, 0.18)',
+    display: 'none',
   },
   showcaseTitle: {
-    color: theme.text,
+    color: isDark ? '#fffaf5' : theme.text,
     fontSize: responsiveFont(32),
     lineHeight: responsiveLineHeight(32, 1.1),
     fontWeight: '300',
@@ -4236,6 +4328,7 @@ function createStyles(theme) {
   panelHeaderCopy: {
     flex: 1,
     gap: 4,
+    minWidth: 0,
   },
   panelTitle: {
     color: theme.text,
@@ -4310,25 +4403,14 @@ function createStyles(theme) {
     backgroundColor: '#ff8e53',
   },
   routeMapGlowLeft: {
-    position: 'absolute',
-    left: -30,
-    top: 70,
-    width: 140,
-    height: 90,
-    backgroundColor: 'rgba(255,100,51,0.42)',
-    borderRadius: 60,
+    display: 'none',
   },
   routeMapGlowRight: {
-    position: 'absolute',
-    right: -10,
-    top: 55,
-    width: 110,
-    height: 100,
-    backgroundColor: 'rgba(66,108,240,0.5)',
-    borderRadius: 60,
+    display: 'none',
   },
   metricCard: {
     minWidth: '47%',
+    flexBasis: '47%',
     flexGrow: 1,
     backgroundColor: theme.panelSoft,
     borderRadius: 20,
@@ -4454,22 +4536,10 @@ function createStyles(theme) {
     borderColor: 'rgba(255,255,255,0.03)',
   },
   shipFlowMapGlowLeft: {
-    position: 'absolute',
-    left: -30,
-    bottom: 18,
-    width: 130,
-    height: 110,
-    borderRadius: 999,
-    backgroundColor: 'rgba(255,100,51,0.22)',
+    display: 'none',
   },
   shipFlowMapGlowRight: {
-    position: 'absolute',
-    right: -10,
-    top: 36,
-    width: 120,
-    height: 120,
-    borderRadius: 999,
-    backgroundColor: 'rgba(66,108,240,0.18)',
+    display: 'none',
   },
   shipFlowSegment: {
     position: 'absolute',
@@ -4669,21 +4739,25 @@ function createStyles(theme) {
   },
   rowCardMain: {
     gap: 4,
+    minWidth: 0,
   },
   rowTitle: {
-    color: theme.text,
+    color: isDark ? '#fffaf5' : theme.text,
     fontSize: responsiveFont(15),
     fontWeight: '800',
+    flexShrink: 1,
   },
   rowBody: {
-    color: theme.textMuted,
+    color: isDark ? 'rgba(255,239,226,0.82)' : theme.textMuted,
     fontSize: responsiveFont(13),
     lineHeight: responsiveLineHeight(13, 1.45),
+    flexShrink: 1,
   },
   rowBodyMuted: {
-    color: theme.textSoft,
+    color: isDark ? 'rgba(255,239,226,0.64)' : theme.textSoft,
     fontSize: responsiveFont(12),
     lineHeight: responsiveLineHeight(12, 1.4),
+    flexShrink: 1,
   },
   orderHistoryCard: {
     backgroundColor: theme.panelSoft,
@@ -4704,7 +4778,7 @@ function createStyles(theme) {
     borderColor: 'rgba(255,255,255,0.08)',
   },
   inventoryHeadline: {
-    color: theme.text,
+    color: isDark ? '#fffaf5' : theme.text,
     fontSize: responsiveFont(46, { min: 38, max: 54 }),
     lineHeight: responsiveLineHeight(46, 1.06),
     fontWeight: '300',
@@ -4749,9 +4823,10 @@ function createStyles(theme) {
     paddingHorizontal: 18,
   },
   filterBoxText: {
-    color: theme.text,
+    color: isDark ? '#fffaf5' : theme.text,
     fontSize: responsiveFont(15),
     fontWeight: '500',
+    flexShrink: 1,
   },
   productGrid: {
     flexDirection: 'row',
@@ -4760,6 +4835,7 @@ function createStyles(theme) {
   },
   productTile: {
     width: '47%',
+    flexBasis: '47%',
     backgroundColor: isDark ? '#26211d' : '#fffaf5',
     borderRadius: 24,
     borderWidth: 1,
@@ -4862,6 +4938,7 @@ function createStyles(theme) {
   ordersBoardLabel: {
     color: 'rgba(255,255,255,0.74)',
     fontSize: responsiveFont(13),
+    flexShrink: 1,
   },
   ordersBars: {
     flexDirection: 'row',
@@ -4939,7 +5016,7 @@ function createStyles(theme) {
     fontWeight: '700',
   },
   emptyBody: {
-    color: theme.textMuted,
+    color: isDark ? 'rgba(255,239,226,0.74)' : theme.textMuted,
     fontSize: responsiveFont(13),
     lineHeight: responsiveLineHeight(13, 1.45),
   },
@@ -4976,9 +5053,14 @@ function createStyles(theme) {
     fontFamily: 'Courier',
   },
   answerText: {
-    color: theme.text,
+    color: isDark ? '#fffaf5' : theme.text,
     fontSize: responsiveFont(14),
     lineHeight: responsiveLineHeight(14, 1.5),
+  },
+  preferenceToggleRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
   },
   orderCard: {
     backgroundColor: theme.panelSoft,
@@ -5020,6 +5102,7 @@ function createStyles(theme) {
   recommendationCopy: {
     flex: 1,
     gap: 4,
+    minWidth: 0,
   },
   recommendationAction: {
     color: theme.accentSoft,

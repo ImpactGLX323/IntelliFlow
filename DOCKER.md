@@ -1,96 +1,110 @@
-# IntelliFlow Docker Setup
+# IntelliFlow Docker
 
-This setup runs the local web workspace as three containers:
+This Docker setup has been rebuilt from scratch around the current app shape:
 
-- `postgres`: PostgreSQL 16 for application data.
-- `backend`: FastAPI on `http://localhost:8000`.
-- `frontend`: Next.js dev server on `http://localhost:3000`.
+- `postgres`: PostgreSQL 16
+- `backend`: FastAPI + Alembic migrations on startup
+- `frontend`: Next.js dev server
 
-The mobile Expo app is intentionally not containerized because iOS simulator development should stay native on macOS.
+The Expo mobile app is still meant to run natively on macOS and connect to the
+backend container through `http://YOUR_MAC_LAN_IP:8000`.
 
-## Start
+## Files
 
-```bash
-docker compose up --build
-```
+- [docker-compose.yml](./docker-compose.yml)
+- [backend/Dockerfile](./backend/Dockerfile)
+- [backend/scripts/docker-entrypoint.sh](./backend/scripts/docker-entrypoint.sh)
+- [frontend/Dockerfile](./frontend/Dockerfile)
+- [.env.docker.example](./.env.docker.example)
 
-Open:
+## First Run
 
-```text
-http://localhost:3000
-```
-
-Backend health:
-
-```text
-http://localhost:8000/health
-```
-
-## Environment
-
-Docker Compose reads values from your shell or a root `.env` file. To create one:
+1. Copy the Docker environment template:
 
 ```bash
-cp .env.docker.example .env
+cp .env.docker.example .env.docker
 ```
 
-Then fill in Firebase and OpenAI values as needed.
+2. Start the stack:
 
-## Documents And Secrets
-
-Official RAG documents are mounted into the backend container at:
-
-```text
-/app/docs/official_docs
+```bash
+docker compose --env-file .env.docker up --build
 ```
 
-Firebase Admin credentials are mounted read-only from:
+3. Open:
 
-```text
-backend/secrets
-```
+- Frontend: `http://localhost:3000`
+- Backend health: `http://localhost:8000/health`
+- Swagger: `http://localhost:8000/docs`
 
-The default expected path inside Docker is:
+## Behavior
 
-```text
-/app/secrets/firebase-admin-sdk.json
+- PostgreSQL persists in the `postgres_data` named volume.
+- The backend runs `alembic upgrade head` before starting `uvicorn`.
+- The frontend runs in development mode with live source mounts.
+- Backend secrets are not baked into the image. Firebase Admin credentials are
+  mounted read-only from `backend/secrets`.
+- Docker uses `DOCKER_DATABASE_URL` so the backend container does not
+  accidentally inherit a host-only `DATABASE_URL` that points at `localhost`.
+
+## Mobile With Docker Backend
+
+Run Expo natively and point it to your Mac:
+
+```bash
+cd mobile
+export EXPO_PUBLIC_API_URL=http://YOUR_MAC_LAN_IP:8000
+npx expo start -c
 ```
 
 ## Useful Commands
 
+Start:
+
 ```bash
-docker compose up --build
+docker compose --env-file .env.docker up --build
+```
+
+Stop:
+
+```bash
 docker compose down
-docker compose logs -f backend
-docker compose logs -f frontend
-docker compose exec backend alembic upgrade head
-docker compose exec backend python -m pip check
 ```
 
-## PyPI Network Issues
-
-If the backend image fails while installing Python packages with `SSL:
-CERTIFICATE_VERIFY_FAILED` or `403 Client Error: Forbidden` from
-`files.pythonhosted.org`, Docker Desktop is likely using a network/proxy path
-that cannot access PyPI correctly.
-
-First try another network or disable VPN/proxy interception. If you still need
-to build, set a temporary package mirror in your root `.env`:
-
-```bash
-PIP_INDEX_URL=https://pypi.org/simple
-PIP_TRUSTED_HOSTS=pypi.org files.pythonhosted.org
-```
-
-Then rebuild:
-
-```bash
-export COMPOSE_BAKE=false
-docker compose build --no-cache --progress=plain backend
-```
-
-To delete the local Docker database volume:
+Stop and remove database volume:
 
 ```bash
 docker compose down -v
 ```
+
+Backend logs:
+
+```bash
+docker compose logs -f backend
+```
+
+Frontend logs:
+
+```bash
+docker compose logs -f frontend
+```
+
+Postgres shell:
+
+```bash
+docker compose exec postgres psql -U intelliflow -d intelliflow
+```
+
+Backend shell:
+
+```bash
+docker compose exec backend sh
+```
+
+## Notes
+
+- This setup intentionally does not containerize Expo/mobile.
+- If you want a production container layout later, build from the `production`
+  stage in [frontend/Dockerfile](./frontend/Dockerfile) and switch the backend
+  command away from `--reload`.
+- Keep real secrets out of `.env.docker.example`.

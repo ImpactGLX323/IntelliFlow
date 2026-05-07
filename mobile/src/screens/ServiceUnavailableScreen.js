@@ -3,7 +3,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { getAppTheme, responsiveFont, responsiveLineHeight } from '../theme/theme';
 
-export default function ServiceUnavailableScreen({ onRetry, onPreview, previewEnabled = false, mode = 'dark' }) {
+export default function ServiceUnavailableScreen({ onRetry, onPreview, previewEnabled = false, mode = 'light' }) {
   const theme = getAppTheme(mode);
   return (
     <View style={[styles.wrap, { backgroundColor: theme.bg }]}>

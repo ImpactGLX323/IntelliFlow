@@ -1,63 +1,87 @@
 services:
   postgres:
     image: postgres:16-alpine
-    container_name: intelliflow-postgres
     restart: unless-stopped
     environment:
-      POSTGRES_DB: intelliflow
-      POSTGRES_USER: intelliflow
-      POSTGRES_PASSWORD: intelliflow
+      POSTGRES_DB: ${POSTGRES_DB:-intelliflow}
+      POSTGRES_USER: ${POSTGRES_USER:-intelliflow}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-intelliflow}
     ports:
-      - "5432:5432"
+      - "${POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U intelliflow -d intelliflow"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-intelliflow} -d ${POSTGRES_DB:-intelliflow}"]
       interval: 10s
       timeout: 5s
-      retries: 5
+      retries: 10
 
   backend:
     build:
       context: ./backend
-      args:
-        PIP_INDEX_URL: ${PIP_INDEX_URL:-https://pypi.org/simple}
-        PIP_TRUSTED_HOSTS: ${PIP_TRUSTED_HOSTS:-pypi.org files.pythonhosted.org}
-    container_name: intelliflow-backend
     restart: unless-stopped
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
     environment:
-      ENV: development
-      DATABASE_URL: postgresql+psycopg://intelliflow:intelliflow@postgres:5432/intelliflow
-      SECRET_KEY: ${SECRET_KEY:-change-me-in-local-docker}
+      APP_ENV: ${APP_ENV:-development}
+      APP_NAME: ${APP_NAME:-IntelliFlow}
+      APP_VERSION: ${APP_VERSION:-1.0.0}
+      AUTH_MODE: ${AUTH_MODE:-hybrid}
+      DATABASE_URL: ${DOCKER_DATABASE_URL:-postgresql+psycopg://intelliflow:intelliflow@postgres:5432/intelliflow}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000,http://localhost:8081,http://127.0.0.1:8081,exp://localhost:8081}
+      DEMO_MODE_ENABLED: ${DEMO_MODE_ENABLED:-true}
+      DEMO_ORG_ID: ${DEMO_ORG_ID:-demo-org}
+      DEMO_USER_ID: ${DEMO_USER_ID:-demo-user}
+      DEMO_USER_PLAN: ${DEMO_USER_PLAN:-BOOST}
+      TEST_PLAN_OVERRIDE: ${TEST_PLAN_OVERRIDE:-BOOST}
+      AI_PROVIDER: ${AI_PROVIDER:-template}
+      ENABLE_MCP_DEV_ENDPOINTS: ${ENABLE_MCP_DEV_ENDPOINTS:-true}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
-      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-https://api.openai.com/v1}
-      OPENAI_CHAT_MODEL: ${OPENAI_CHAT_MODEL:-gpt-4o-mini}
       FIREBASE_ADMIN_SDK_PATH: ${FIREBASE_ADMIN_SDK_PATH:-/app/secrets/firebase-admin-sdk.json}
       GOOGLE_CLOUD_PROJECT: ${GOOGLE_CLOUD_PROJECT:-}
       FIREBASE_PROJECT_ID: ${FIREBASE_PROJECT_ID:-}
-      RAG_SOURCE_DIRECTORY: /app/docs/official_docs
-      RAG_FIRESTORE_COLLECTION: ${RAG_FIRESTORE_COLLECTION:-rag_embeddings}
-      RAG_EMBEDDING_MODEL: ${RAG_EMBEDDING_MODEL:-text-embedding-3-large}
-      RAG_EMBEDDING_DIMENSIONS: ${RAG_EMBEDDING_DIMENSIONS:-2048}
+      SUPPORT_EMAIL: ${SUPPORT_EMAIL:-support@intelliflow.local}
+      FREE_API_CACHE_TTL_SECONDS: ${FREE_API_CACHE_TTL_SECONDS:-900}
+      DATA_GOV_MY_ENABLED: ${DATA_GOV_MY_ENABLED:-true}
+      BNM_OPENAPI_ENABLED: ${BNM_OPENAPI_ENABLED:-true}
+      OSM_NOMINATIM_ENABLED: ${OSM_NOMINATIM_ENABLED:-true}
+      OSM_OVERPASS_ENABLED: ${OSM_OVERPASS_ENABLED:-true}
+      OPEN_METEO_ENABLED: ${OPEN_METEO_ENABLED:-true}
+      OPEN_METEO_MARINE_ENABLED: ${OPEN_METEO_MARINE_ENABLED:-true}
+      GOOGLE_TRENDS_ALPHA_ENABLED: ${GOOGLE_TRENDS_ALPHA_ENABLED:-false}
+      GOOGLE_TRENDS_API_KEY: ${GOOGLE_TRENDS_API_KEY:-}
+      SHOPEE_OPEN_PLATFORM_ENABLED: ${SHOPEE_OPEN_PLATFORM_ENABLED:-false}
+      SHOPEE_APP_ID: ${SHOPEE_APP_ID:-}
+      SHOPEE_APP_SECRET: ${SHOPEE_APP_SECRET:-}
+      LAZADA_OPEN_PLATFORM_ENABLED: ${LAZADA_OPEN_PLATFORM_ENABLED:-false}
+      LAZADA_APP_KEY: ${LAZADA_APP_KEY:-}
+      LAZADA_APP_SECRET: ${LAZADA_APP_SECRET:-}
+      TIKTOK_SHOP_ENABLED: ${TIKTOK_SHOP_ENABLED:-false}
+      TIKTOK_APP_KEY: ${TIKTOK_APP_KEY:-}
+      TIKTOK_APP_SECRET: ${TIKTOK_APP_SECRET:-}
+      PAID_MARKET_INTELLIGENCE_ENABLED: ${PAID_MARKET_INTELLIGENCE_ENABLED:-false}
+      PAID_LOGISTICS_PROVIDER_ENABLED: ${PAID_LOGISTICS_PROVIDER_ENABLED:-false}
+      PAID_WAREHOUSE_PROVIDER_ENABLED: ${PAID_WAREHOUSE_PROVIDER_ENABLED:-false}
     ports:
-      - "8000:8000"
+      - "${BACKEND_PORT:-8000}:8000"
     volumes:
       - ./backend:/app
-      - ./backend/docs:/app/docs
       - ./backend/secrets:/app/secrets:ro
+    command: ["sh", "/app/scripts/docker-entrypoint.sh"]
     depends_on:
       postgres:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')\""]
+      interval: 15s
+      timeout: 5s
+      retries: 10
 
   frontend:
     build:
       context: ./frontend
-      target: deps
-    container_name: intelliflow-frontend
+      target: development
     restart: unless-stopped
-    command: npm run dev -- --hostname 0.0.0.0
     environment:
+      NODE_ENV: development
       NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
       NEXT_PUBLIC_FIREBASE_API_KEY: ${NEXT_PUBLIC_FIREBASE_API_KEY:-}
       NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN: ${NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN:-}
@@ -66,13 +90,15 @@ services:
       NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID: ${NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID:-}
       NEXT_PUBLIC_FIREBASE_APP_ID: ${NEXT_PUBLIC_FIREBASE_APP_ID:-}
     ports:
-      - "3000:3000"
+      - "${FRONTEND_PORT:-3000}:3000"
     volumes:
       - ./frontend:/app
       - frontend_node_modules:/app/node_modules
       - frontend_next_cache:/app/.next
+    command: ["npm", "run", "dev", "--", "--hostname", "0.0.0.0", "--port", "3000"]
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
 
 volumes:
   postgres_data:

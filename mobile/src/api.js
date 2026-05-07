@@ -41,6 +41,10 @@ export const api = {
     requestJson(session, `/api/sales-orders/${orderId}/items/${itemId}/fulfill`, { method: 'POST', body: { quantity } }),
   getSales: (session) => requestJson(session, '/api/sales/'),
   createSale: (session, payload) => requestJson(session, '/api/sales/', { method: 'POST', body: payload }),
+  getEInvoiceSummary: (session) => requestJson(session, '/api/einvoicing/summary'),
+  getEInvoiceDocuments: (session) => requestJson(session, '/api/einvoicing/documents'),
+  createEInvoiceFromSale: (session, saleId, payload) =>
+    requestJson(session, `/api/einvoicing/from-sale/${saleId}`, { method: 'POST', body: payload }),
   getSuppliers: (session) => requestJson(session, '/api/suppliers/'),
   createSupplier: (session, payload) => requestJson(session, '/api/suppliers/', { method: 'POST', body: payload }),
   getPurchaseOrders: (session, statusFilter) =>
@@ -99,7 +103,12 @@ export const api = {
     copilotQuery(session, {
       ...payload,
       user_plan: payload?.user_plan || session?.plan || 'FREE',
-      user_id: payload?.user_id || session?.userId || null,
+      user_id:
+        payload?.user_id != null
+          ? String(payload.user_id)
+          : session?.userId != null
+            ? String(session.userId)
+            : null,
     }),
   getInsights: (session) => requestJson(session, '/api/ai/insights'),
 };

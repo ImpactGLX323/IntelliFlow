@@ -65,7 +65,7 @@ export const navigationItems = [
   {
     key: 'einvoicing',
     label: 'E-Invoicing',
-    routeName: 'compliance',
+    routeName: 'einvoicing',
     shortDescription: 'LHDN-ready transaction workflows and compliance readiness',
     requiredPlan: 'PREMIUM',
     icon: 'receipt',
@@ -102,7 +102,7 @@ export const navigationItems = [
     key: 'account',
     label: 'Profile',
     routeName: 'account',
-    shortDescription: 'Workspace identity, account details, and plan context',
+    shortDescription: 'Account identity, workspace plan, and security context',
     requiredPlan: 'FREE',
     icon: 'user',
     category: 'account',

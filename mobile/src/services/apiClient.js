@@ -44,6 +44,16 @@ async function normalizeError(response) {
   if (typeof data?.message === 'string') {
     return new Error(data.message);
   }
+  if (Array.isArray(data?.detail)) {
+    const message = data.detail
+      .map((item) => {
+        const location = Array.isArray(item?.loc) ? item.loc.join(' > ') : 'request';
+        const detail = typeof item?.msg === 'string' ? item.msg : 'Invalid input.';
+        return `${location}: ${detail}`;
+      })
+      .join('\n');
+    return new Error(message || `Request failed with status ${response.status}`);
+  }
   if (data?.detail && typeof data.detail === 'object') {
     return new Error(JSON.stringify(data.detail));
   }

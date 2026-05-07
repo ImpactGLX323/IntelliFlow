@@ -1,16 +1,21 @@
-FROM node:20-alpine AS deps
+FROM node:20-alpine AS base
 
 WORKDIR /app
 
 COPY package.json package-lock.json ./
 RUN npm ci
 
-FROM node:20-alpine AS builder
+FROM base AS development
 
-WORKDIR /app
+ENV NODE_ENV=development
 
-COPY --from=deps /app/node_modules ./node_modules
 COPY . .
+
+EXPOSE 3000
+
+CMD ["npm", "run", "dev", "--", "--hostname", "0.0.0.0", "--port", "3000"]
+
+FROM base AS builder
 
 ARG NEXT_PUBLIC_API_URL=http://localhost:8000
 ARG NEXT_PUBLIC_FIREBASE_API_KEY=
@@ -28,20 +33,22 @@ ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL \
     NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=$NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID \
     NEXT_PUBLIC_FIREBASE_APP_ID=$NEXT_PUBLIC_FIREBASE_APP_ID
 
+COPY . .
 RUN npm run build
 
-FROM node:20-alpine AS runner
+FROM node:20-alpine AS production
 
 ENV NODE_ENV=production
 
 WORKDIR /app
 
 COPY package.json package-lock.json ./
-COPY --from=deps /app/node_modules ./node_modules
+RUN npm ci --omit=dev
+
 COPY --from=builder /app/.next ./.next
 COPY --from=builder /app/public ./public
 COPY --from=builder /app/next.config.js ./next.config.js
 
 EXPOSE 3000
 
-CMD ["npm", "start"]
+CMD ["npm", "run", "start"]

@@ -15,7 +15,7 @@ NOTIFICATION_CATEGORIES = {
     "stock_adjusted": {"plan": "FREE", "push_default": False, "email_default": False},
     "stock_deducted": {"plan": "FREE", "push_default": False, "email_default": False},
     "account_system_alerts": {"plan": "FREE", "push_default": False, "email_default": False},
-    "sales_order_alerts": {"plan": "PRO", "push_default": False, "email_default": False},
+    "sales_order_alerts": {"plan": "PRO", "push_default": True, "email_default": False},
     "purchase_order_due_overdue": {"plan": "PRO", "push_default": True, "email_default": False},
     "reorder_suggestions": {"plan": "PRO", "push_default": True, "email_default": False},
     "return_spike": {"plan": "PRO", "push_default": True, "email_default": False},
