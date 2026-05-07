@@ -58,7 +58,7 @@ async def ready():
 @router.get("/public/app-config")
 async def public_app_config():
     config = get_app_config()
-    return {
+    response = {
         "app_name": config.app_name,
         "environment": config.app_env,
         "demo_mode_enabled": config.demo_mode_enabled,
@@ -76,7 +76,11 @@ async def public_app_config():
             "notifications": True,
         },
         "plans": ["FREE", "PREMIUM", "BOOST"],
-        "testing_plan_override": "PREMIUM" if config.testing_plan_override == "PRO" else config.testing_plan_override,
         "support_email": config.support_email,
         "timestamp": _timestamp(),
     }
+    if config.app_env == "development" and config.testing_plan_override:
+        response["testing_plan_override"] = (
+            "PREMIUM" if config.testing_plan_override == "PRO" else config.testing_plan_override
+        )
+    return response

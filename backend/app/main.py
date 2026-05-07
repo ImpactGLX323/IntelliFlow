@@ -80,7 +80,7 @@ app.include_router(ai_copilot.router, prefix="/api/ai", tags=["ai"])
 app.include_router(ai_copilot.public_router)
 app.include_router(inventory.router, prefix="/api", tags=["inventory"])
 app.include_router(ingestion.router, tags=["ingestion"])
-if os.getenv("ENABLE_MCP_DEV_ENDPOINTS", "").lower() == "true":
+if app_config.enable_free_api_dev_endpoints:
     app.include_router(mcp_dev.router)
 
 @app.get("/")

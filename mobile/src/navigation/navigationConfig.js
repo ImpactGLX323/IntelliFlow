@@ -9,6 +9,15 @@ export const navigationItems = [
     category: 'workspace',
   },
   {
+    key: 'products',
+    label: 'Products',
+    routeName: 'products',
+    shortDescription: 'Create catalogue records, opening stock, pricing, and supplier metadata',
+    requiredPlan: 'FREE',
+    icon: 'box',
+    category: 'workspace',
+  },
+  {
     key: 'inventory',
     label: 'Inventory',
     routeName: 'inventory',

@@ -4,6 +4,28 @@ IntelliFlow is a supply-chain operations platform built with FastAPI, Next.js, a
 
 This README reflects the current implemented state of the project and is aligned with [docs/FEATURE_COMPLETION_AUDIT.md](/Users/sami/IntelliFlow/docs/FEATURE_COMPLETION_AUDIT.md).
 
+## Screenshots
+
+Add the actual screenshot files under `docs/screenshots/` using these names to activate the gallery below:
+
+- `docs/screenshots/landing-page.png`
+- `docs/screenshots/logistics-map.png`
+- `docs/screenshots/dashboard-workspace.png`
+
+Once those files exist in the repository, the README will render them automatically:
+
+### Landing Page
+
+![IntelliFlow landing page](docs/screenshots/landing-page.png)
+
+### Logistics Intelligence
+
+![IntelliFlow logistics map](docs/screenshots/logistics-map.png)
+
+### Workspace Dashboard
+
+![IntelliFlow workspace dashboard](docs/screenshots/dashboard-workspace.png)
+
 ## Quick Start
 
 If you cloned this project from GitHub and want to run it locally for the first time, follow this section first.
@@ -45,9 +67,16 @@ pip install -r requirements.txt
 
 ### 4. Backend environment file
 
-Create or update:
+Create your local env file from:
 
-- [backend/.env](/Users/sami/IntelliFlow/backend/.env)
+- [backend/.env.example](/Users/sami/IntelliFlow/backend/.env.example)
+
+Example:
+
+```bash
+cd /Users/sami/IntelliFlow/backend
+cp .env.example .env
+```
 
 At minimum, make sure it contains working values for:
 

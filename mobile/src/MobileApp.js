@@ -186,7 +186,10 @@ async function registerForPushNotificationsAsync() {
 
 function money(value) {
   const num = Number(value || 0);
-  return `$${num.toFixed(2)}`;
+  return `RM ${num.toLocaleString('en-MY', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
 }
 
 const INDO_PACIFIC_BOUNDS = {
@@ -1238,8 +1241,8 @@ function ProductsScreen({ session }) {
 
   return (
     <View style={styles.screenStack}>
-      <ScreenTopBar title="Quoting" leftLabel="<" rightLabel="..." />
-      <Text style={styles.inventoryHeadline}>Items</Text>
+      <ScreenTopBar title="Products" leftLabel="[]" rightLabel="..." />
+      <Text style={styles.inventoryHeadline}>Products</Text>
       <View style={styles.filterRow}>
         <View style={styles.filterBoxCompact}>
           <Text style={styles.filterBoxText}>Q</Text>
@@ -1263,7 +1266,7 @@ function ProductsScreen({ session }) {
         </View>
       ) : null}
 
-      <Panel title="Products" subtitle="Create catalogue records and opening stock mirrored into the stock ledger.">
+      <Panel title="Products" subtitle="Create catalogue records and seed opening stock into the ledger-backed inventory system.">
         <ErrorBanner message={error} />
         <View style={styles.metricGrid}>
           <MetricCard label="Products" value={String(products.length)} tone="accent" />
@@ -1324,7 +1327,7 @@ function ProductsScreen({ session }) {
   );
 }
 
-function InventoryScreen({ session }) {
+function InventoryScreen({ session, onNavigate }) {
   const [products, setProducts] = useState([]);
   const [warehouses, setWarehouses] = useState([]);
   const [risks, setRisks] = useState([]);
@@ -1542,19 +1545,11 @@ function InventoryScreen({ session }) {
         </View>
       </AppShowcaseCard>
 
-      <AppShowcaseCard title="Stock">
-        <View style={styles.stockLegendWrap}>
-          <View style={styles.stockLegendColumn}>
-            <Text style={styles.stockLegendItem}>In stock</Text>
-            <Text style={styles.stockLegendItem}>Out of stock</Text>
-            <Text style={styles.stockLegendItem}>Low stock</Text>
-            <Text style={styles.stockLegendItem}>Dead stock</Text>
-          </View>
-          <View style={styles.stockDonut} />
-        </View>
-      </AppShowcaseCard>
-
-      <Panel title="Inventory insights" subtitle="Ledger-first stock, reorder pressure, and warehouse intake.">
+      <Panel
+        title="Inventory insights"
+        subtitle="Ledger-first stock, reorder pressure, and warehouse intake."
+        right={<ActionButton title="Products" tone="secondary" onPress={() => onNavigate?.('products')} />}
+      >
         <View style={styles.metricGrid}>
           <MetricCard label="Low stock risks" value={String(risks.length)} tone="accent" />
           <MetricCard label="Warehouses" value={String(warehouses.length)} />
@@ -3020,7 +3015,7 @@ function EInvoicingScreen({ session }) {
 
   return (
     <View style={styles.screenStack}>
-      <Panel title="E-Invoicing" subtitle="LHDN-ready invoice preparation from recorded sales.">
+      <Panel title="LHDN E-Invoicing" subtitle="Generate LHDN-ready invoice records from recorded sales and track readiness gaps.">
         <ErrorBanner message={error} />
         <View style={styles.metricGrid}>
           <MetricCard label="Documents" value={String(summary?.total_documents || 0)} />
@@ -3046,7 +3041,7 @@ function EInvoicingScreen({ session }) {
         <Field label="Buyer name" value={form.buyer_name} onChangeText={(value) => setForm((current) => ({ ...current, buyer_name: value }))} />
         <Field label="Buyer email" value={form.buyer_email} onChangeText={(value) => setForm((current) => ({ ...current, buyer_email: value }))} />
         <Field label="Buyer TIN" value={form.buyer_tin} onChangeText={(value) => setForm((current) => ({ ...current, buyer_tin: value }))} />
-        <ActionButton title={submitting ? 'Generating...' : 'Generate e-invoice'} onPress={generateDocument} disabled={submitting} />
+        <ActionButton title={submitting ? 'Generating...' : 'Generate LHDN invoice'} onPress={generateDocument} disabled={submitting} />
       </Panel>
 
       <Panel title="Readiness checks">
@@ -3064,7 +3059,7 @@ function EInvoicingScreen({ session }) {
               <View style={styles.rowCardMain}>
                 <Text style={styles.rowTitle}>{document.document_number}</Text>
                 <Text style={styles.rowBody}>
-                  Sale #{document.sale_id} • {document.invoice_type} • {document.currency}
+                  Sale #{document.sale_id} • Type {document.invoice_type} • {document.currency}
                 </Text>
                 <Text style={styles.rowBodyMuted}>
                   {document.validation_status?.replaceAll('_', ' ')} • {displayDate(document.issue_date)}
@@ -3077,7 +3072,7 @@ function EInvoicingScreen({ session }) {
             </View>
           ))
         ) : (
-          <EmptyState title="No e-invoice documents" body="Generate the first one from an existing sale record." />
+          <EmptyState title="No LHDN documents" body="Generate the first LHDN-ready invoice from an existing sale record." />
         )}
       </Panel>
     </View>
@@ -3514,14 +3509,14 @@ function RecommendationItem({ recommendation }) {
   );
 }
 
-function ScreenRenderer({ activeScreen, session, sessionPlan, currentUser }) {
+function ScreenRenderer({ activeScreen, session, sessionPlan, currentUser, onNavigate }) {
   switch (activeScreen) {
     case 'dashboard':
       return <DashboardScreen session={session} currentUser={currentUser} sessionPlan={sessionPlan} />;
     case 'products':
       return <ProductsScreen session={session} />;
     case 'inventory':
-      return <InventoryScreen session={session} />;
+      return <InventoryScreen session={session} onNavigate={onNavigate} />;
     case 'sales':
       return <SalesScreen session={session} sessionPlan={sessionPlan} />;
     case 'purchasing':
@@ -3821,7 +3816,7 @@ export default function MobileApp() {
           />
 
           <ScrollView contentContainerStyle={styles.content}>
-            <ScreenRenderer activeScreen={activeScreen} session={session} sessionPlan={sessionPlan} currentUser={currentUser} />
+            <ScreenRenderer activeScreen={activeScreen} session={session} sessionPlan={sessionPlan} currentUser={currentUser} onNavigate={setActiveScreen} />
           </ScrollView>
 
           <BottomTabBar activeScreen={activeScreen} onSelect={setActiveScreen} />

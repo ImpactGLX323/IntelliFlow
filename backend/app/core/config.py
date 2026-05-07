@@ -60,8 +60,6 @@ def get_app_config() -> AppConfig:
         testing_plan_override = "PRO"
     if testing_plan_override not in {None, "FREE", "PRO", "BOOST"}:
         testing_plan_override = None
-    if testing_plan_override is None and get_app_env() == "development":
-        testing_plan_override = "BOOST"
     return AppConfig(
         app_name=os.getenv("APP_NAME", "IntelliFlow"),
         app_env=get_app_env(),
@@ -76,5 +74,5 @@ def get_app_config() -> AppConfig:
         auth_mode=auth_mode,
         testing_plan_override=testing_plan_override,
         free_api_cache_ttl_seconds=int(os.getenv("FREE_API_CACHE_TTL_SECONDS", "900") or "900"),
-        enable_free_api_dev_endpoints=_env_flag("ENABLE_FREE_API_DEV_ENDPOINTS", True),
+        enable_free_api_dev_endpoints=_env_flag("ENABLE_FREE_API_DEV_ENDPOINTS", False),
     )
